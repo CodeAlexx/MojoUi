@@ -1,13 +1,13 @@
 """MojoUI M1 demo — static three-frame walk of Context + button + label.
 
-Run via `cd /home/alex/MojoUI && pixi run m1`. The pixi task BUILDS to a
+Run via `pixi run m1`. The pixi task BUILDS to a
 binary then runs it; the JIT path (`mojo run`) does NOT work here because
 the JIT eagerly materialises every reachable `external_call` symbol even
 under the runtime-False guard, tripping "Symbols not found" on the gated
 `Backend.draw_*` dispatch in the walker. Building links against
 libmojoui_floor.so via `-Xlinker -L. -Xlinker -lmojoui_floor`, so the
 gate works as intended — `mojoui_draw_*` is symbol-resolvable but never
-called. See MOJO_NOTES.md "mojo run (JIT) does NOT dlopen the shared
+called. See Mojo implementation notes "mojo run (JIT) does NOT dlopen the shared
 library" + "Module-level state for frame callbacks — UNRESOLVED".
 
 M1 phase capstone (chunk 18). Proves the immediate-mode loop composes
@@ -20,7 +20,7 @@ sokol_app frame callback would need shared mutable state with `main()`,
 but current beta Mojo rejects module-level `var` and cannot materialise
 capturing closures as runtime function pointers. The canonical fix is a
 2-symbol C-floor `user_data` extension (~10 LoC) — deferred to a future
-chunk; tracked under MOJO_NOTES.md "Module-level state for frame
+chunk; tracked under Mojo implementation notes "Module-level state for frame
 callbacks — UNRESOLVED".
 
 Three frames simulated:
@@ -74,7 +74,7 @@ def _walk_and_dispatch(mut ctx: Context, never_run: Bool) raises -> Int:
         if kind == CMD_JUMP:
             # Guard against backward / self-referential JUMP — would
             # otherwise infinite-loop the walker. See FRAGILE #2 in
-            # SKEPTIC_FINDINGS_M1_2026-05-28.md and the walker-invariant
+            # regression notes and the walker-invariant
             # note on `CommandBuffer.read_jump_dst`.
             var prev_off = off
             off = ctx.commands.read_jump_dst(off)
@@ -117,7 +117,7 @@ def _simulate_frame(
     """Run one frame: begin → row → button → row → label → end. Returns the
     button's click event (True only on release-inside-active).
 
-    Per FRAGILE #7 (SKEPTIC_FINDINGS_M1_2026-05-28.md): the counter is
+    Per FRAGILE #7 (regression notes): the counter is
     bumped IMMEDIATELY on click and BEFORE the label() call, so the label
     in the SAME frame reflects the new count — the user-visible string is
     consistent with the click event reported that frame.
@@ -190,7 +190,7 @@ def main() raises:
     )
     # `counter` is now bumped inside `_simulate_frame` ON the click (F3),
     # so by the time we reach this print the value is already 1 (see
-    # FRAGILE #7 in SKEPTIC_FINDINGS_M1_2026-05-28.md — the previous
+    # FRAGILE #7 in regression notes — the previous
     # design bumped here, AFTER the per-frame loop, so F3's label still
     # showed "Clicked 0 times" even though the click was detected).
     print(

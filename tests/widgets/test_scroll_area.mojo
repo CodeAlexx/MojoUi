@@ -49,7 +49,7 @@ def _make_ctx(
     ctx.begin_frame_no_input(Vec2(800.0, 600.0), mouse_pos.copy(), pressed, released)
     # Patch in the simulated vertical mouse motion. `begin_frame_no_input`
     # does NOT call `poll()`, so `ctx.input.mouse_delta` keeps its zero
-    # default until we set it here. Per MOJO_NOTES.md c22 finding.
+    # default until we set it here. Per Mojo implementation notes c22 finding.
     ctx.input.mouse_delta = Vec2(0.0, mouse_delta_y)
     var widths = List[Int32]()
     widths.append(200)

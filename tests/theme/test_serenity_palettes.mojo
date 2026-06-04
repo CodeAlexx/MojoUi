@@ -1,6 +1,6 @@
 """Tests for Serenity/DearPyGui-inspired MojoUI palettes.
 
-Run: cd /home/alex/MojoUI && pixi run test-serenity-palettes
+Run: pixi run test-serenity-palettes
 """
 
 from mojoui.theme.serenity_palettes import (

@@ -16,7 +16,7 @@ Lifecycle:
         Backend.frame_end()
     Backend.shutdown()                     # tears sg + window down
 
-Vertex format (matches c_floor/mojoui_shim.h and docs/MOJOUI_CONVENTIONS.md §4):
+Vertex format (matches c_floor/mojoui_shim.h and public ABI notes §4):
     5 floats per vertex = (x, y, u, v, color_bits) — stride 20 bytes.
     The 5th "float" is a `0xAABBGGRR` UInt32 bit-reinterpreted (the ImDrawVert
     trick). The sokol pipeline reads attribute 2 at offset 16 as
@@ -89,7 +89,7 @@ def _u32_to_f32_bits(u: UInt32) -> Float32:
     Implemented via a stack-allocated Float32 + UnsafePointer(to=...).bitcast.
     No Mojo `bitcast` builtin for scalars exists yet in current beta; the
     pointer round-trip is the canonical workaround documented in
-    /home/alex/mojoui-audit/MOJO_NOTES.md "Living additions".
+    Mojo implementation notes "Living additions".
     """
     var f: Float32 = 0.0
     var fp = UnsafePointer(to=f).bitcast[UInt32]()
@@ -234,7 +234,7 @@ struct Backend:
         `c_floor/mojoui_platform.c`), so it executes automatically the moment
         the window is alive — i.e. immediately after `run_blocking` enters
         `sapp_run`, BEFORE the first frame callback fires. Mojo code must
-        NOT call `_ffi_render_init` directly. See MOJO_NOTES.md
+        NOT call `_ffi_render_init` directly. See Mojo implementation notes
         ("render_init timing").
         """
         return _ffi_init_window(width, height, title)
@@ -251,7 +251,7 @@ struct Backend:
         `frame_fn` must be a Mojo `def () -> None` (zero args, no return).
         The parametric type parameter is the workaround for the current-beta
         function-pointer FFI capturing-error-swap (see ffi.mojo run_blocking
-        docstring + MOJO_NOTES.md "Living additions"). Pass-through to the
+        docstring + Mojo implementation notes "Living additions"). Pass-through to the
         underlying FFI wrapper — no extra logic here.
         """
         _ffi_run_blocking(frame_fn)
@@ -324,7 +324,7 @@ struct Backend:
 
         The byte-by-byte copy goes through `List[UInt8]` because that's the
         only `String(unsafe_from_utf8=...)` overload current-beta Mojo accepts
-        for foreign-owned NUL-terminated buffers (see MOJO_NOTES.md).
+        for foreign-owned NUL-terminated buffers (see Mojo implementation notes).
         """
         var n = _ffi_input_text_length()
         if n <= 0:

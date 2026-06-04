@@ -1,6 +1,6 @@
 """Tests for trainer UI state and config snapshots.
 
-Run: cd /home/alex/MojoUI && pixi run test-trainer-model
+Run: pixi run test-trainer-model
 """
 
 from mojoui.app.trainer_model import (

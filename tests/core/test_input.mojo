@@ -17,7 +17,7 @@ tests are PURELY static + algorithmic:
      "Symbols not found: [...]"; the static signature proof is what we want
      here anyway since we cannot open a real window without the GPU).
 
-Run: cd /home/alex/MojoUI && pixi run test-input
+Run: pixi run test-input
 """
 
 from mojoui.core.input import (
@@ -206,7 +206,7 @@ def test_mouse_button_count_constant() raises:
     of `comptime Int32` constants (otherwise the compiler proves every
     branch dead and emits "always evaluates to False" warnings that would
     hide real warnings from future chunks — see FRAGILE #4 in
-    SKEPTIC_FINDINGS_M1_2026-05-28.md).
+    regression notes).
     """
     var btn_count = Int(MOUSE_BUTTON_COUNT)
     var btn_left = Int(MOJOUI_BTN_LEFT)

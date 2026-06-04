@@ -11,7 +11,7 @@ Verifies the egui-style DragValue widget (M2 c22):
 JIT note (same as `tests/widgets/test_basic.mojo`): we use
 `Context.begin_frame_no_input(window_size, mouse_pos, pressed, released)` to
 bypass the FFI input poll (`mojo run` does not auto-dlopen
-`libmojoui_floor.so` — see MOJO_NOTES.md "mojo run (JIT) does NOT dlopen the
+`libmojoui_floor.so` — see Mojo implementation notes "mojo run (JIT) does NOT dlopen the
 shared library"). `mouse_delta` is normally set by `InputState.poll()` as
 `mouse_pos - prev_mouse_pos`; in tests we set it directly on
 `ctx.input.mouse_delta` AFTER `begin_frame_no_input` returns, simulating one

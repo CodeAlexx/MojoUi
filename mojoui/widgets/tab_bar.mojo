@@ -19,7 +19,7 @@ tab gets the `active_bg` fill plus a `primary` underline; hovered tabs get
 `hover_bg`; the rest use `theme.bg`. A `border`-colored baseline runs under
 the whole bar.
 
-`.copy()` discipline per MOJO_NOTES.md: Vec2/Rect/Color reads passed onward
+`.copy()` discipline per Mojo implementation notes: Vec2/Rect/Color reads passed onward
 need `.copy()`.
 """
 

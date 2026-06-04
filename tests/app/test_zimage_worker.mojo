@@ -9,7 +9,7 @@ Mirrors the worker/zimage.rs protocol:
   - cancel mid-run → Failed{"cancelled"}, no Done.
   - param honoring: steps/cfg fall back to Base defaults only when 0/≤0.
 
-Run: cd /home/alex/MojoUI && pixi run test-zimage-worker
+Run: pixi run test-zimage-worker
 """
 
 from mojoui.app.zimage_worker import (

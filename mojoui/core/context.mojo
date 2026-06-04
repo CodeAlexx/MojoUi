@@ -13,7 +13,7 @@ Lifecycle per frame:
     ctx.end_frame()                # finalise control, pop root layout
     ...renderer adapter walks ctx.commands and submits to Backend...
 
-Mirrors microui per `/home/alex/mojoui-audit/AUDIT_microui.md` "The Context
+Mirrors microui per `internal audit notes` "The Context
 Struct (mu_Context)". Does NOT add: widgets (c17+), containers/windows (M2),
 the full theme system (M3), or the renderer adapter.
 """
@@ -62,7 +62,7 @@ appended to the main buffer at `end_frame` → walks LAST → renders ON TOP."""
 # ============================================================================
 # Minimal token set so chunk-17 widgets can paint defaults without depending
 # on the full M3 token-based theme. Replace wholesale via `Context.set_theme`.
-# `Copyable, Movable` — reads must `.copy()` (MOJO_NOTES.md
+# `Copyable, Movable` — reads must `.copy()` (Mojo implementation notes
 # "Copyable ≠ ImplicitlyCopyable").
 
 
@@ -214,7 +214,7 @@ struct Context(Movable):
 
         JIT note: `input.poll()` resolves to `mojoui_get_mouse_*` / `_get_key`
         C symbols. Under `mojo run` (JIT) the shared library is NOT auto-loaded
-        — see MOJO_NOTES.md "mojo run (JIT) does NOT dlopen the shared
+        — see Mojo implementation notes "mojo run (JIT) does NOT dlopen the shared
         library". For headless tests, use `begin_frame_no_input(window_size,
         mouse_pos, pressed, released)` to bypass the FFI poll. In production
         (where `Backend.run_blocking` is in the call graph) the JIT does
@@ -226,7 +226,7 @@ struct Context(Movable):
         self.input.poll()
         # 3. Thread mouse pos + LMB edges + Tab/Shift state into control
         # state. Vec2 is Copyable-not-ImplicitlyCopyable so the read needs
-        # `.copy()` — see MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable".
+        # `.copy()` — see Mojo implementation notes "Copyable ≠ ImplicitlyCopyable".
         var pressed = self.input.mouse_pressed(0)   # MOJOUI_BTN_LEFT = 0
         var released = self.input.mouse_released(0)
         # c52: Tab/Shift state for keyboard focus cycling. Tab fires on the
@@ -313,7 +313,7 @@ struct Context(Movable):
         does NOT enforce that balance (microui pattern: caller discipline),
         but it DOES print a one-line warning if the stack depth at entry
         exceeds 1 (orphaned begin_column without matching end_column —
-        see SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE #3). The orphans are
+        see regression notes FRAGILE #3). The orphans are
         popped here regardless; the next `begin_frame` would clear them
         via `layout.reset()` but the misbalanced widget's children would
         already have drawn against the wrong body, so naming the leak

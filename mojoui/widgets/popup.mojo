@@ -11,7 +11,7 @@ API shape mirrors `widgets/combobox.mojo` — caller owns the open flag and the
 list of items; the widget returns the clicked-item index this frame (and
 closes itself), or -1 if nothing was clicked.
 
-State ownership (per MOJOUI_NOTES.md "Module-level `var` is REJECTED"):
+State ownership (per Mojo implementation notes "Module-level `var` is REJECTED"):
   `is_open` is a caller-managed `Bool`. Same convention as combobox. The
   caller stores it alongside whatever triggered the popup (a menubar's
   selected-menu index, a right-click anchor Vec2, etc.) and threads both
@@ -38,7 +38,7 @@ ID strategy:
   combobox pattern so re-orderings of the item list don't cross-collide
   with sibling popups.
 
-`.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+`.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
   `Vec2` / `Rect` / `Color` are `Copyable, Movable` but NOT
   `ImplicitlyCopyable`. Every field read passed to another call needs
   `.copy()`. `anchor` and the constructed popup `rect` are read multiple
@@ -160,7 +160,7 @@ def popup(
             ctx.draw_rect(row_rect.copy(), ctx.theme.hover_bg.copy())
 
         # Item text — caller must have set theme.font_id (else skip, same
-        # font_id==0 guard as combobox per SKEPTIC_FINDINGS_M1 FRAGILE #5).
+        # font_id==0 guard as combobox per regression notes FRAGILE #5).
         if ctx.theme.font_id != 0:
             var text_pos = Vec2(
                 row_rect.x + Float32(ctx.theme.padding),

@@ -16,7 +16,7 @@ Per-theme stats printed: name, command byte count, sample token RGB triples
 (accent_default, text_strong, bg_panel).
 
 Runtime visual gate (real window + theme-switcher button) DEFERRED — GPU
-busy + module-level frame-callback state still unresolved per MOJO_NOTES.md.
+busy + module-level frame-callback state still unresolved per Mojo implementation notes.
 Static gate exercises every M3 surface in one binary without opening a
 window.
 
@@ -214,7 +214,7 @@ def main() raises:
     print("Loaded default UI font id =", font_id, "(0 = no font; text draws skipped)")
 
     # Build the theme set. Theme is Copyable-not-ImplicitlyCopyable so
-    # downstream reads need `.copy()` (per MOJO_NOTES.md c15 wall).
+    # downstream reads need `.copy()` (per Mojo implementation notes c15 wall).
     var themes = List[Theme]()
     themes.append(dark_theme())
     themes.append(light_theme())

@@ -29,7 +29,7 @@ def _fail(msg: String) raises:
 # The closed header lands at (0, 0, 200, 24); open dropdown rows land STRICTLY
 # BELOW the header at (0, 24, 200, 24), (0, 48, 200, 24), (0, 72, 200, 24), ...
 # (per M2 bugfix 2026-05-28: option rects no longer overlap the header — see
-# SKEPTIC_FINDINGS_M2_2026-05-28.md FRAGILE #2).
+# regression notes FRAGILE #2).
 # ----------------------------------------------------------------------------
 
 

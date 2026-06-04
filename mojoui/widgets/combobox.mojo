@@ -31,7 +31,7 @@ ID strategy — caller-supplied `id_str`:
   or grows (the index is what matters, not the option text).
 
 Open-state storage — caller-owned `mut is_open: Bool`:
-  Mojo currently has no module-level mutable state (MOJOUI_NOTES.md "Module-
+  Mojo currently has no module-level mutable state (Mojo implementation notes "Module-
   level `var` is REJECTED") and no extensible Context-owned per-id state map
   (planned for M2.5 — once `serde/` lands an `IdMap[Bool]` becomes a natural
   fit). The pragmatic M2 workaround is to make the open flag an explicit
@@ -61,7 +61,7 @@ Overlay scope (M2 simplification):
   (microui's z-order trick — see `core/commands.mojo` `emit_jump` /
   `patch_jump`). M3 will wire both.
 
-`.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+`.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
   `Rect`/`Color`/`Vec2`/`DefaultTheme` are `Copyable, Movable` but NOT
   `ImplicitlyCopyable`. Every read of a field-typed value to pass into
   another call needs `.copy()`. The header `rect` is read multiple times
@@ -152,7 +152,7 @@ def combobox(
 
     # Caller contract: call `ctx.set_default_font(<id>)` before the frame if
     # the header text/glyph should render. When `ctx.theme.font_id == 0` the
-    # text draws are SKIPPED — see SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE
+    # text draws are SKIPPED — see regression notes FRAGILE
     # #5: emitting CMD_TEXT with font_id=0 would corrupt the M3 renderer
     # adapter's font-id lookup.
     if ctx.theme.font_id != 0:
@@ -195,7 +195,7 @@ def combobox(
     # row backgrounds + text to `ctx.popup_commands` so they're appended
     # AFTER every base-layer widget at end_frame — the dropdown finally
     # renders on top instead of being occluded by subsequent widgets
-    # (see HANDOFF_2026-05-28_KITCHEN_SINK.md "Combobox: dropdown not
+    # (see implementation notes "Combobox: dropdown not
     # visibly appearing"). The popup rect is recorded so base-layer widgets
     # whose update_control runs later in the frame skip claiming hover
     # under the dropdown.
@@ -220,7 +220,7 @@ def combobox(
             # caused option 0 to overlap the lower half of the header — a
             # lower-half-header click would steal the active claim from the
             # header and silently select option 0 instead of closing the
-            # dropdown. See SKEPTIC_FINDINGS_M2_2026-05-28.md FRAGILE #2.
+            # dropdown. See regression notes FRAGILE #2.
             # New formula places option 0 at y = rect.y + rect.h, option 1
             # at y + row_h, etc. — visually + behaviorally clean.
             var opt_y = rect.y + rect.h + Float32(i) * row_h

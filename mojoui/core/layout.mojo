@@ -32,7 +32,7 @@ constraints (M3) and NOT scroll/clip (commands.mojo, chunk 12 handles
 clip stack independently).
 
 Mirrors microui's `mu_Layout` per
-`/home/alex/mojoui-audit/AUDIT_microui.md` "Layout System".
+`internal audit notes` "Layout System".
 """
 
 from mojoui.core.types import Rect, Vec2
@@ -43,7 +43,7 @@ from mojoui.core.types import Rect, Vec2
 # ============================================================
 #
 # `comptime` (not `alias`) for compile-time constants per current beta —
-# see /home/alex/mojoui-audit/MOJO_NOTES.md "`comptime` not `alias`".
+# see Mojo implementation notes "`comptime` not `alias`".
 
 comptime ROW_DEFAULT_H: Int32 = 0
 """Sentinel for `row_height == default`. `_compute_row_height` returns
@@ -235,7 +235,7 @@ struct LayoutStack(Movable):
         with `end_column`), this prints a one-line message naming the
         actual root cause and returns a zero rect rather than the cryptic
         "index -1 out of bounds" List crash. See FRAGILE #6 in
-        SKEPTIC_FINDINGS_M1_2026-05-28.md.
+        regression notes.
         """
         if len(self.frames) == 0:
             print(

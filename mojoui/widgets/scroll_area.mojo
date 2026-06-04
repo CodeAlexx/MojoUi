@@ -46,7 +46,7 @@ For M2 the implementation is minimal but real:
     scissors children to it; `end_scroll_area` emits a matching `CMD_CLIP`
     restoring `ctx.window_rect` so subsequent widgets are not clipped.
 
-`.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+`.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
 `Rect`/`Vec2` reads to pass into another call need `.copy()`. `Float32` is
 `ImplicitlyCopyable` so the bound `scroll_y` and `mouse_delta.y` reads do
 NOT need `.copy()`.
@@ -148,7 +148,7 @@ def begin_scroll_area(
     #    area do NOT collide with widgets outside (e.g. two `label("row")`s
     #    inside vs outside, or two scroll areas containing the same child
     #    labels). Paired with `ctx.pop_id()` in `end_scroll_area`. See
-    #    SKEPTIC_FINDINGS_M2_2026-05-28.md FRAGILE #3.
+    #    regression notes FRAGILE #3.
     ctx.push_id_str(id_str)
 
     return changed

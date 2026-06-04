@@ -7,13 +7,13 @@ remains in its default visual state. Emits all 14+ widgets inside a
 command counts per `CMD_*` kind plus a PASS line.
 
 Run via `pixi run gallery`. The task BUILDS to a binary (NOT `mojo run` /
-JIT) for the same reason `m1_button.mojo` does — see MOJO_NOTES.md "mojo
+JIT) for the same reason `m1_button.mojo` does — see Mojo implementation notes "mojo
 run (JIT) does NOT dlopen the shared library" + c18 JIT-eager-
 materialisation. `text_edit`/`text_area`/`combobox` all reach FFI symbols
 from their static call graph; building against `libmojoui_floor.so`
 resolves them at link time. No live window, no `Backend.run_blocking` —
 runtime visual gate deferred (GPU busy + module-level frame-callback
-state unresolved per MOJO_NOTES.md).
+state unresolved per Mojo implementation notes).
 """
 
 from mojoui.core.types import Vec2, Rect, Color
@@ -98,7 +98,7 @@ struct GalleryState:
         self.gain = 0.6
         self.cfg = 7.5
         self.progress = 0.42
-        # texture_id 0 = built-in 1x1 white (see MAP.md §5 gotchas) — safe
+        # texture_id 0 = built-in 1x1 white; safe
         # to draw without a real upload; the renderer will sample white.
         self.texture_id = UInt32(0)
         self.name_buffer = String("user")

@@ -7,7 +7,7 @@ mojoui/app/inference_model.mojo. Exercises the worker state machine:
   - Queue advance: second Generate while running waits, then promotes on Done.
   - Cancel mid-run: running dropped, no history, next queued promoted.
 
-Run: cd /home/alex/MojoUI && pixi run test-inference-model
+Run: pixi run test-inference-model
 """
 
 from mojoui.app.inference_model import (

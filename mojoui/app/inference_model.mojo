@@ -21,7 +21,7 @@ The single seam where real serenitymojo inference attaches later is
 `tick_worker` (swap the frame counter for a real progress callback) and the
 synthetic-result production inside `_complete_running`.
 
-Deferred (per PLAN_M4 v1 scope): Video mode, RON persistence, real inference,
+Deferred (per M4 scope scope): Video mode, RON persistence, real inference,
 NVML perf (mock constants here), controlnet panel, LoRA drag-reorder.
 """
 

@@ -52,7 +52,7 @@ but the only correct strategy once M3's chain points past the window.
 ### `.copy()` discipline
 
 `Rect`/`Color`/`Vec2`/`DefaultTheme` are `Copyable, Movable` but NOT
-`ImplicitlyCopyable` (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable").
+`ImplicitlyCopyable` (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable").
 Every READ of a field-typed value to pass into another call needs an
 explicit `.copy()`. `Float32`/`Int32`/`Bool` ARE `ImplicitlyCopyable` so
 the `rect.x`/`rect.y` mutations and the `jump_off` Int32 need no `.copy()`.
@@ -64,7 +64,7 @@ from mojoui.core.commands import CMD_JUMP_SIZE
 from mojoui.core.control import CTRL_ACTIVE, OPT_NONE
 
 
-# `comptime` (not `alias`) per current beta — see MOJO_NOTES.md.
+# `comptime` (not `alias`) per current beta — see Mojo implementation notes.
 
 comptime _TITLE_BAR_H: Float32 = 24.0
 """Title bar height (px). Matches `layout.DEFAULT_ROW_PX` so a single-row

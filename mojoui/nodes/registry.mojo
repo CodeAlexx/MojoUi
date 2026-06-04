@@ -1,6 +1,6 @@
 """NodeRegistry + NodeTypeDef — the visual-data layer's type catalog.
 
-Per `AUDIT_erigui_nodes.md` §"Node Registry / Type System" the registry maps
+Per `EriGui node audit notes` §"Node Registry / Type System" the registry maps
 `type_id: String` (e.g. `"core/k_sampler"`) to a `NodeTypeDef` carrying the
 defaults that `make_node` clones into a fresh `Node` at spawn time:
 
@@ -9,7 +9,7 @@ defaults that `make_node` clones into a fresh `Node` at spawn time:
   - default parameter values keyed by field name
   - canvas display size + human-readable display name + category
 
-**Important deviation from EriGui** (per `SCAFFOLD_PLAN.md` Decision 1):
+**Important deviation from EriGui** (per `architecture plan` Decision 1):
 EriGui represents node behavior via a `Box<dyn NodeType>` trait with an
 `execute()` method. MojoUI's `NodeTypeDef` is PLAIN DATA — no execute method.
 Execution is the application layer's responsibility (the diffusion runtime
@@ -17,7 +17,7 @@ walks the topo-sorted graph and dispatches per `type_id` outside the visual
 layer). This keeps `mojoui/nodes/` pure-data and serializable; whatever app
 embeds MojoUI joins behavior to `type_id` via its own dispatch table.
 
-**Registry decoupling note** (per `AUDIT_erigui_nodes.md` §"Context Menu /
+**Registry decoupling note** (per `EriGui node audit notes` §"Context Menu /
 Node Spawning UX", which describes `NodeRegistryHandle` trait in EriGui):
 the M2.5 registry is a concrete struct, not a trait. The canvas (c39) +
 add-menu (c40) consume the typedef directly. If a future circular-dep
@@ -87,12 +87,12 @@ struct NodeTypeDef(Copyable, Movable):
     registry stamps into a fresh `Node` on spawn (`make_node`).
 
     NOTE: execution is intentionally NOT part of this struct (per
-    `SCAFFOLD_PLAN.md` Decision 1). EriGui's `Box<dyn NodeType>` has an
+    `architecture plan` Decision 1). EriGui's `Box<dyn NodeType>` has an
     `execute()` method; MojoUI's `NodeTypeDef` has only display + default
     state. Whatever app embeds MojoUI joins behavior to `type_id` via its
     own dispatch table outside the visual layer.
 
-    Per MOJO_NOTES.md "Confirmed in M2.5 chunk 32" (auto-Copyable wall): no
+    Per Mojo implementation notes "Confirmed in M2.5 chunk 32" (auto-Copyable wall): no
     explicit `__copyinit__`. The compiler auto-generates a working copy
     init that respects `.copy()` on the `String`/`List[Port]`/`Dict[String,
     FieldValue]` fields and trivially copies the `Vec2` scalar fields.

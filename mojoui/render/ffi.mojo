@@ -1,6 +1,6 @@
 """Mojo FFI declarations for the MojoUI C floor.
 
-Source of truth: /home/alex/MojoUI/c_floor/mojoui_shim.h
+Source of truth: the MojoUI repo/c_floor/mojoui_shim.h
 Every public function exported by libmojoui_floor.so is bound here.
 
 Usage:
@@ -8,7 +8,7 @@ Usage:
 
 At runtime, libmojoui_floor.so must be findable by the dynamic linker.
 Pixi tasks in the project root prepend LD_LIBRARY_PATH=. so `pixi run hello`
-and `pixi run test-ffi` work from /home/alex/MojoUI.
+and `pixi run test-ffi` work from the MojoUI repo.
 
 Conventions (matching c_floor/mojoui_shim.h):
   * Integer pixel coords (Int32 at the FFI boundary).
@@ -21,7 +21,7 @@ Conventions (matching c_floor/mojoui_shim.h):
     Relying on NUL termination caused stale-glyph text bleed (fixed 2026-05-28).
   * mojoui_run_blocking takes a fn() -> None Mojo callback that sokol_app
     invokes once per frame; this is the known-fragile function-pointer FFI
-    case flagged in MOJO_NOTES.md ("Open questions").
+    case flagged in Mojo implementation notes ("Open questions").
 """
 
 from std.ffi import external_call
@@ -151,7 +151,7 @@ def run_blocking[CbType: AnyType, //](frame_fn: CbType):
     and the noop is "not capturing", drop it and the noop is "capturing").
     Parametric `CbType: AnyType` lets external_call accept any function
     reference and pass it through verbatim — the C ABI does the rest.
-    Documented in /home/alex/mojoui-audit/MOJO_NOTES.md ("Living additions").
+    Documented in Mojo implementation notes ("Living additions").
     """
     external_call["mojoui_run_blocking", NoneType](frame_fn)
 

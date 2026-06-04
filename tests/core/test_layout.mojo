@@ -253,7 +253,7 @@ def test_reset_empties_stack() raises:
 
 
 # ----------------------------------------------------------------------------
-# 10) Three-level deep nesting (GAP #2 from SKEPTIC_FINDINGS_M1_2026-05-28.md)
+# 10) Three-level deep nesting (GAP #2 from regression notes)
 #     Verifies depth tracking, cursor positioning, and balanced close.
 # ----------------------------------------------------------------------------
 

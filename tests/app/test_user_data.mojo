@@ -14,7 +14,7 @@ The runtime gate is the future `examples/m1_button_interactive.mojo` (a chunk
 beyond c50) which builds to a real binary linked against libmojoui_floor.so
 via `-Xlinker -lmojoui_floor`.
 
-Run: cd /home/alex/MojoUI && pixi run test-user-data
+Run: pixi run test-user-data
 """
 
 from std.memory import UnsafePointer

@@ -6,7 +6,7 @@ user right-clicked. The caller is responsible for:
   1. Detecting the right-click event on whatever surface should open the menu
      (canvas, node, list row, etc) — use the `right_click_at` helper.
   2. Storing the captured `anchor: Vec2` and an `is_open: Bool` flag across
-     frames (since Mojo has no module-level state — see MOJOUI_NOTES.md
+     frames (since Mojo has no module-level state — see Mojo implementation notes
      "Module-level `var` is REJECTED"; same convention as combobox).
   3. Calling `context_menu(ctx, id, anchor, items, is_open)` every frame.
      When `is_open` is True the popup renders; clicking an item returns its

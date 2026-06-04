@@ -8,7 +8,7 @@ under different parents hashes to different IDs. Mirrors microui (`mu_Id`,
 System 2 — `RetainedId` (UInt64): index (low 48 bits) + generation (high 16 bits)
 for retained-mode Node graph IDs. Free-listed slots have their generation bumped
 on reuse, so dangling IDs from before a free become invalid. Replaces Rust's
-`slotmap::DefaultKey` (Mojo has no slotmap crate — see AUDIT_erigui_core.md).
+`slotmap::DefaultKey` (Mojo has no slotmap crate — see EriGui core audit notes).
 
 The two systems do NOT share a type. Different problems, different solutions.
 This module ships hashing + allocation primitives only; the `id_stack` lives in

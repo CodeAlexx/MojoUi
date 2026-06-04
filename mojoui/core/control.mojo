@@ -6,7 +6,7 @@ WHO has keyboard focus, and WHO is currently being clicked (active). Owned by
 `update_control(ctx.controls, id, rect, opts)` as step 3 of the 6-step microui
 recipe (`get_id → layout_next → update_control → behavior → draw → return`).
 
-Invariants (mirror microui per /home/alex/mojoui-audit/AUDIT_microui.md
+Invariants (mirror microui per internal audit notes
 "Focus / Hover / Active State"): at most ONE id is `hover`, ONE is `focus`,
 ONE is `active`. These are three distinct slots — a button can be hovered +
 focused + active simultaneously (the user-is-mid-click state).
@@ -32,7 +32,7 @@ from mojoui.core.types import Vec2, Rect
 from mojoui.core.id import ImmediateId, IMM_ID_NONE
 
 
-# `comptime` (not `alias`) per current beta — see MOJO_NOTES.md.
+# `comptime` (not `alias`) per current beta — see Mojo implementation notes.
 
 # Result flags returned by `update_control` (bit-or'd).
 comptime CTRL_HOVERED: Int32 = 1 << 0
@@ -190,7 +190,7 @@ struct ControlState(Movable):
         self.hover = IMM_ID_NONE
         self.hover_root = IMM_ID_NONE
         # Vec2 is Copyable-not-ImplicitlyCopyable in current beta; need
-        # explicit .copy() — see MOJO_NOTES.md "Vec2 is Copyable but NOT
+        # explicit .copy() — see Mojo implementation notes "Vec2 is Copyable but NOT
         # ImplicitlyCopyable".
         self.mouse_pos = mouse_pos.copy()
         self.mouse_pressed_this_frame = mouse_pressed

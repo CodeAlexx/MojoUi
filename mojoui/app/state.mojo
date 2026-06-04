@@ -2,7 +2,7 @@
 
 This module is the canonical Mojo-side fix for the long-standing "no-arg
 sokol_app frame callback cannot share mutable state with main()" wall
-documented under MOJO_NOTES.md "Module-level state for frame callbacks". The
+documented under Mojo implementation notes "Module-level state for frame callbacks". The
 c50 C-floor extension (`mojoui_set_user_data` / `mojoui_get_user_data`) stashes
 an opaque pointer in a static slot; this module wraps the FFI with a typed
 `store_user_state[T]` / `retrieve_user_state[T]` pair so demo authors do not

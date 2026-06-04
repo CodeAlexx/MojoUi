@@ -16,7 +16,7 @@ LayoutStack → ControlState → CommandBuffer. Tests:
 
 Pattern reused from `test_scroll_area.mojo` (c28) — `begin_frame_no_input`
 to bypass FFI poll, patch `ctx.input.mouse_delta` directly to simulate
-mouse motion (per MOJO_NOTES.md c22 finding).
+mouse motion (per Mojo implementation notes c22 finding).
 """
 
 from mojoui.core.types import Vec2, Rect, Color

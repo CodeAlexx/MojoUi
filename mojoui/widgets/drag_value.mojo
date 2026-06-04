@@ -2,7 +2,7 @@
 
 Click+drag horizontally to scrub a `Float32` by `mouse_delta.x * speed`. Returns
 True on any frame the value changed. This is the M2 c22 chunk — the seventh
-widget in the MojoUI catalog (per `/home/alex/mojoui-audit/AUDIT_egui_ecosystem.md`
+widget in the MojoUI catalog (per `internal audit notes`
 "Widget Catalog" row 7, **MUST v1**), the egui-derived alternative to Slider
 for unbounded numeric editing — microui has nothing equivalent. Together with
 the M1 button it forms the second pillar of the immediate-mode interaction
@@ -38,9 +38,9 @@ Display:
     same precedence as `widgets/basic.mojo::button`.
   - Value text drawn with `String(value)` — Mojo's default `Float32 -> String`
     drops trailing zeros (`5.0` prints as `5.0`, `5.25` as `5.25`, no
-    format-spec like `{:.3f}` available in current beta — see MOJO_NOTES.md
+    format-spec like `{:.3f}` available in current beta — see Mojo implementation notes
     "No f-string format-spec for floats"). For M2 we accept the rendering
-    quirks; a `_round3` helper is documented in MOJO_NOTES.md if a future
+    quirks; a `_round3` helper is documented in Mojo implementation notes if a future
     chunk wants consistent decimal places.
 
 ID strategy:
@@ -51,7 +51,7 @@ ID strategy:
     containers will hash to different IDs via the id_stack, exactly as
     `button(ctx, "OK")` does.
 
-`.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+`.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
 `Rect`, `Color`, `Vec2`, `DefaultTheme` are all `Copyable, Movable` but NOT
 `ImplicitlyCopyable`. Every read of a field-typed value to pass to another
 call needs an explicit `.copy()` — the `rect` from `layout_next` is read
@@ -139,11 +139,11 @@ def drag_value(
     # Value text — formatted via `String(value)`. Mojo's default Float32 ->
     # String drops trailing zeros, so 5.0 prints as "5.0" and 5.25 as "5.25"
     # — acceptable for M2 (no f-string format-spec in current beta per
-    # MOJO_NOTES.md). Position uses the same baseline-y rough vertical-center
+    # Mojo implementation notes). Position uses the same baseline-y rough vertical-center
     # as `button` / `label`. No real centering (would need text_width FFI).
     # Caller contract: call `ctx.set_default_font(<id>)` before the frame if
     # the value should render. When `ctx.theme.font_id == 0` the text draw is
-    # SKIPPED — see SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE #5.
+    # SKIPPED — see regression notes FRAGILE #5.
     if ctx.theme.font_id != 0:
         var text = String(value)
         var label_pos = Vec2(

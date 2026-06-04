@@ -12,13 +12,13 @@ API:
                              # M3: animated diagonal stripes)
     progress_bar(ctx, 1.5)   # clamped to 1.0 — no overflow past rect.w
 
-Following the microui pattern (`AUDIT_microui.md` "Widget Pattern") this
+Following the microui pattern (`microui reference notes` "Widget Pattern") this
 is the display-only variant of the 6-step recipe (steps 1 and 3 are
 omitted — no id, no `update_control` — because labels / separators /
 progress bars never interact). Same shape as `widgets/basic.mojo::label`
 and `widgets/basic.mojo::separator`.
 
-`.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+`.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
 every read of a `Rect` / `Color` / `DefaultTheme` field to pass into
 another call has an explicit `.copy()`. The `rect` returned by
 `layout_next` is read up to three times (border, background, fill); the
@@ -100,7 +100,7 @@ def _draw_border_outline(
     public helper in `widgets/draw.mojo` (or similar).
 
     `color` is read 4× via `.copy()` (Color is Copyable-not-
-    ImplicitlyCopyable per MOJO_NOTES.md).
+    ImplicitlyCopyable per Mojo implementation notes).
     """
     # Top edge: full width, `thickness` tall.
     ctx.draw_rect(Rect(rect.x, rect.y, rect.w, thickness), color.copy())

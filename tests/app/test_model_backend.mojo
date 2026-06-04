@@ -1,6 +1,6 @@
 """Tests for model-agnostic backend contracts.
 
-Run: cd /home/alex/MojoUI && pixi run test-model-backend
+Run: pixi run test-model-backend
 """
 
 from mojoui.app.job_runtime import (

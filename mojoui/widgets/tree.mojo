@@ -28,7 +28,7 @@ items with greater depth) are skipped.
 Interaction: clicking a row selects it; if it has children, the click also
 toggles expand/collapse. Returns the clicked item id this frame, or -1.
 
-`.copy()` discipline per MOJO_NOTES.md.
+`.copy()` discipline per Mojo implementation notes.
 `raises`: `TreeState.is_expanded` reads a Dict (getitem raises in beta).
 """
 

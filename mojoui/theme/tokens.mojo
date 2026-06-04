@@ -29,7 +29,7 @@ NOT included in this chunk (per the c43 contract):
 
 References:
   - rerun `crates/viewer/re_ui/src/design_tokens.rs` (semantic naming).
-  - `/home/alex/mojoui-audit/AUDIT_egui_ecosystem.md` §"Aesthetic Patterns"
+  - `internal audit notes` §"Aesthetic Patterns"
     (8px grid, 6px default radius, semantic state tokens, alert fill/text
     pairs, axis colors).
 """
@@ -269,7 +269,7 @@ struct Theme(Copyable, Movable):
     """Composed theme: `colors` + `spacing` + `radius` + `typography`, plus
     `font_id` (UInt32 returned by `Backend.load_font`; 0 = no font loaded, so
     widgets skip text per the M1 bugfix font_id contract — see
-    `SKEPTIC_FINDINGS_M1` FRAGILE #5) and `name` for theme-switching debug.
+    `regression notes` FRAGILE #5) and `name` for theme-switching debug.
 
     Default-constructs to a neutral dark palette so the chunk's smoke tests
     can exercise the token machinery without depending on c44. c44 supplies

@@ -18,7 +18,7 @@ microui-style 6-step widget recipe needs:
 Edge detection is a per-button/per-key XOR between this frame's level and the
 previous frame's level, computed by `InputState.poll()` from the FFI. The same
 pattern is used by microui's `mu_input_*` setters (per
-`/home/alex/mojoui-audit/AUDIT_microui.md` §Input Handling) — except microui
+`internal audit notes` §Input Handling) — except microui
 takes pushed events from the host, while MojoUI pulls the current level from
 the C floor each frame. Same edge math, different transport.
 
@@ -72,7 +72,7 @@ from mojoui.render.ffi import (
 
 
 # `comptime` (not `alias`) for compile-time constants per current beta — see
-# /home/alex/mojoui-audit/MOJO_NOTES.md "`comptime` not `alias`".
+# Mojo implementation notes "`comptime` not `alias`".
 #
 # MOUSE_BUTTON_COUNT mirrors the three MOJOUI_BTN_* indices defined in
 # mojoui/render/ffi.mojo (LEFT=0, RIGHT=1, MIDDLE=2). If the C floor ever
@@ -175,7 +175,7 @@ struct InputState(Copyable, Movable):
     The previous-state buffers are kept inside the struct so each `InputState`
     is a self-contained per-frame snapshot — no hidden globals, no other
     "where is the prev frame" book-keeping anywhere else. This matches
-    microui's all-in-`mu_Context` discipline (per AUDIT_microui.md).
+    microui's all-in-`mu_Context` discipline (per microui reference notes).
 
     Construction (`__init__`) zeros everything, so the first `poll()` call
     sees an entirely-up previous frame: any keys/buttons that were already
@@ -203,7 +203,7 @@ struct InputState(Copyable, Movable):
       1. Tests inject typed text directly (`inp.pending_text = String("ab")`)
          and call `disable_ffi_text()` so `consume_text()` returns the
          injected bytes without resolving `mojoui_get_input_text` (which the
-         JIT would otherwise trip on — see MOJO_NOTES.md c15/c16 JIT note).
+         JIT would otherwise trip on — see Mojo implementation notes c15/c16 JIT note).
       2. Production code can stage text from a non-FFI source (e.g. an
          in-process simulated input feed for headless integration tests).
     Always cleared after a successful drain."""
@@ -308,7 +308,7 @@ struct InputState(Copyable, Movable):
           2. Otherwise — and only when `_use_ffi_text` is True (the default)
              — drain the C-floor's input-text buffer via the FFI: same
              byte-copy-through-`List[UInt8]` pattern as `Backend.input_text()`
-             in `mojoui/render/backend.mojo` (per MOJO_NOTES.md
+             in `mojoui/render/backend.mojo` (per Mojo implementation notes
              "`String(unsafe_from_utf8=List[UInt8])`").
           3. When `_use_ffi_text` is False (tests that called
              `disable_ffi_text()`), return "" without touching FFI — this

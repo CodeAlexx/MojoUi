@@ -1,9 +1,9 @@
 """MojoUI M0 demo - 800x600 window with centered rect + 'Hello, MojoUI'.
 
 Run via:
-    cd /home/alex/MojoUI && pixi run hello
+    pixi run hello
 or
-    cd /home/alex/MojoUI && LD_LIBRARY_PATH=. pixi run mojo run -I . examples/m0_hello.mojo
+    LD_LIBRARY_PATH=. pixi run mojo run -I . examples/m0_hello.mojo
 
 M0 gate (runtime verification, currently deferred — GPU is busy):
   * Window opens at 800x600 titled 'MojoUI M0 Hello'.
@@ -19,7 +19,7 @@ uses only the Backend API (no direct `external_call` to mojoui_*), and the
 frame callback respects sokol_app's `void (*)(void)` contract.
 
 Two integration notes (both documented at length in
-/home/alex/mojoui-audit/MOJO_NOTES.md):
+Mojo implementation notes):
 
 1. render_init timing (case B fix): `mojoui_render_init` needs a live GL
    context via `sglue_environment()`, which only exists after sokol_app

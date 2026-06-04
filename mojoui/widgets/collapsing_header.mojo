@@ -26,7 +26,7 @@ Triangle is approximated for M2 by stacked thin rects (3 thin vertical-stacked
 rows for ▶, single thin horizontal row for ▼) — proper tessellated triangles
 arrive with M3's AA vector primitive. The public API is unchanged by that swap.
 
-`.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+`.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
 `Color`/`Rect`/`Vec2`/`DefaultTheme` field reads need explicit `.copy()`. The
 implementation threads `.copy()` everywhere required.
 """
@@ -128,7 +128,7 @@ def collapsing_header(mut ctx: Context, label: String, mut open: Bool) -> Bool:
     # mirrors button/checkbox vertical-center calc.
     # Caller contract: call `ctx.set_default_font(<id>)` before the frame if
     # the label should render. When `ctx.theme.font_id == 0` the text draw is
-    # SKIPPED — see SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE #5.
+    # SKIPPED — see regression notes FRAGILE #5.
     if ctx.theme.font_id != 0:
         var label_x: Float32 = tri_x + _TRI_SIZE + pad
         var label_y: Float32 = rect.y + (rect.h + Float32(ctx.theme.font_size_pt) * 0.7) * 0.5

@@ -1,6 +1,6 @@
 """VersionPeek — parse the `version` field of a workflow JSON before full deserialization.
 
-Per EriGui (audit_erigui_nodes.md §"Serde Schema"): the workflow JSON's first
+Per EriGui (EriGui node audit notes §"Serde Schema"): the workflow JSON's first
 field is always `"version": <int>`. Loaders peek the version BEFORE attempting
 the full parse, so a v1 loader that sees a v2 file rejects it with a structured
 `UnsupportedVersion` error instead of a generic mid-stream JSON parse error

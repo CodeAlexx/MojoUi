@@ -11,7 +11,8 @@ Alpha v0.1.0 - currently in the **M0** (milestone zero) phase: scaffolding the p
 The M0 "hello world" demo opens an 800×600 window with a centered "Hello, MojoUI" at 24pt over a purple accent rectangle on dark gray. The C floor (sokol_app + sokol_gfx + stb_truetype) must build first; then the Mojo example runs via `pixi`:
 
 ```bash
-cd /home/alex/MojoUI
+git clone https://github.com/CodeAlexx/MojoUi.git
+cd MojoUi
 pixi install       # one-time: provisions Mojo 1.0.0b2 + system OpenGL/X11 dev libs
 pixi run build     # compiles c_floor/*.c -> libmojoui_floor.so in this dir
 pixi run interactive  # ★ FLAGSHIP DEMO (c53) — first interactive MojoUI binary.
@@ -71,10 +72,6 @@ pixi run test-backend   # render/backend.mojo smoke (color packing + tessellatio
 ```
 
 The build assumes Linux with OpenGL 3.3 (`-DSOKOL_GLCORE`). Other backends (Metal, D3D11, Vulkan, WebGPU) compile by changing the SOKOL define in `c_floor/Makefile` — not yet validated.
-
-## Design
-
-See [/home/alex/mojoui-audit/SCAFFOLD_PLAN.md](/home/alex/mojoui-audit/SCAFFOLD_PLAN.md) for the full design document covering the layered architecture, build system, milestones, and roadmap.
 
 ## License
 

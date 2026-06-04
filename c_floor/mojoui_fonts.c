@@ -10,7 +10,7 @@
  * Design notes:
  *   - Atlases are baked ONCE per (font, size) at load time using
  *     stbtt_BakeFontBitmap into a 512x512 8-bit alpha bitmap. The audit
- *     (AUDIT_mojogui_c.md "Font Atlas Implementation") singles out the
+ *     (renderer audit notes "Font Atlas Implementation") singles out the
  *     legacy backend's per-glyph stbtt_GetCodepointBitmap path as the
  *     primary text-rendering perf bug. We do not repeat that mistake.
  *   - Single-channel alpha is expanded to RGBA (R=G=B=255, A=alpha) before

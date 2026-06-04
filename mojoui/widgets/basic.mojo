@@ -4,7 +4,7 @@ Per M1 chunk 17 these were stub implementations using axis-aligned `draw_rect`
 calls. **M3 chunk 51 upgrades `button()`** to consume the M3 visual stack:
 
   * Background fill via `tess_rounded_rect` (6 px corner radius — matches
-    `RadiusTokens.md` per `mojoui/theme/tokens.mojo`).
+    `RadiusTokens` per `mojoui/theme/tokens.mojo`).
   * Raised drop shadow via `tess_drop_shadow` (only when not pressed; gives
     the pressed-into-the-surface feel without computing an inset offset).
   * State-dependent colours via the `_resolve_button_bg` bridge helper that
@@ -47,7 +47,7 @@ body — the tess_* calls reach no FFI symbol from inside the widget, so
 removed in the M3 c46-fix.
 
 Each widget follows the microui 6-step recipe (per
-`/home/alex/mojoui-audit/AUDIT_microui.md` "Widget Pattern"):
+`internal audit notes` "Widget Pattern"):
 
     1. id     = ctx.get_id(label)
     2. rect   = ctx.layout_next()
@@ -59,7 +59,7 @@ Each widget follows the microui 6-step recipe (per
     6. return — surface the click event (Bool for button) or new value
                  (Float32 for slider) etc.
 
-The `.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+The `.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
 `Color`, `Rect`, `Vec2`, `DefaultTheme` are all `Copyable, Movable` but NOT
 `ImplicitlyCopyable`. Every READ of a field-typed value to pass it to another
 function call needs an explicit `.copy()` — passing the same `rect` to two
@@ -86,7 +86,7 @@ from mojoui.render.tessellator import tess_rounded_rect, tess_drop_shadow
 # c51 — M3 visual constants (button)
 # ============================================================================
 #
-# Per M3 `RadiusTokens.md` (mojoui/theme/tokens.mojo) the default widget
+# Per M3 `RadiusTokens` (mojoui/theme/tokens.mojo) the default widget
 # corner radius is 6 px — same value rerun uses for its base button corner
 # radius. Hardcoded here pending the c48 Context→Theme migration that lets
 # `button()` read `ctx.theme.radius.md` directly.
@@ -163,7 +163,7 @@ def button(mut ctx: Context, label: String) -> Bool:
     `ctx.set_default_font(<id>)` BEFORE the frame begins. When
     `ctx.theme.font_id == 0` (no font loaded), the text draw is SKIPPED —
     the button background + shadow still render so the click area remains
-    visible. See SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE #5.
+    visible. See regression notes FRAGILE #5.
     """
     # 1. id — derive an ImmediateId from the label string (under current
     #    id_stack top, so the same label under different parent containers
@@ -269,7 +269,7 @@ def label(mut ctx: Context, text: String):
     Caller contract: if you want the text to render, call
     `ctx.set_default_font(<id>)` BEFORE the frame begins. When
     `ctx.theme.font_id == 0` the text draw is SKIPPED (the slot is still
-    reserved). See SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE #5.
+    reserved). See regression notes FRAGILE #5.
     """
     var rect = ctx.layout_next()
     # Skip the text draw when no font is loaded — same rationale as

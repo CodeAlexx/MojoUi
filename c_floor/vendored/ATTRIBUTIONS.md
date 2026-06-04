@@ -21,7 +21,7 @@ Vendored on **2026-05-27**.
   - `sokol/sokol_log.h` — default logging callback used by sokol_app/gfx
 - **Why:** Single dependency that provides the window + GPU layer for MojoUI's
   `c_floor`. Chosen over GLFW+bgfx/Dawn for header-only simplicity, MIT-friendly
-  zlib license, and unified app/gfx model. See `mojoui-audit/AUDIT_sokol_gfx.md`.
+  zlib license, and unified app/gfx model. See `internal audit notes`.
 
 ## stb_truetype
 
@@ -32,7 +32,7 @@ Vendored on **2026-05-27**.
   - `stb/stb_truetype.h` — TrueType font parsing + glyph rasterization
 - **Why:** Atlas-baking backend for MojoUI's text rendering. Public-domain
   single-header, no dependencies, used by every roguelike/game UI ever shipped.
-  See `mojoui-audit/AUDIT_mojogui_c.md` (font section).
+  See `internal audit notes` (font section).
 
 ---
 

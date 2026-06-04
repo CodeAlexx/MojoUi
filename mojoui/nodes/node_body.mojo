@@ -3,7 +3,7 @@
 EriGui's `NodeType` trait exposes a `draw_body` method so each node type
 renders its own parameter widgets inside the node rect
 (`erigui-widgets/src/node_graph/mod.rs`). MojoUI keeps `NodeTypeDef` as
-pure data (`SCAFFOLD_PLAN.md` Decision 1), so there is no per-type vtable
+pure data (`architecture plan` Decision 1), so there is no per-type vtable
 to dispatch on. Instead the canvas calls this ONE default body renderer
 for every node: it lists the node's `fields` as `name: value` text rows
 below the title bar.

@@ -3,8 +3,8 @@
 M3 chunk 46 introduced these primitives; **M3 c46-fix Bug 2 (2026-05-28)**
 re-routes the emit-side API through `ctx.commands.emit_triangles` so widget
 geometry flows through the command buffer + walker like every other draw
-primitive (RECT/TEXT/CLIP/JUMP). See `KNOWN_VISUAL_BUGS_2026-05-28.md` Bug 2
-for the regression report.
+primitive (RECT/TEXT/CLIP/JUMP). This fixes a regression where tessellated
+geometry was cleared before the demo walker could draw it.
 
 Extends the existing `mojoui/render/backend.mojo` flat-rect tessellator
 (`_tessellate_rect`) with three new primitives that emit variable-vertex-
@@ -19,8 +19,7 @@ fix design called Backend directly from the tessellator, bypassing the
 walker entirely and so getting the geometry cleared by `Backend.frame_begin`
 between widget evaluation and the walker's draw calls.
 
-Design (per M3 contract, per `/home/alex/mojoui-audit/SCAFFOLD_PLAN.md`
-"M3 Tessellator"):
+Design notes for the M3 tessellator:
 
   - Rounded rect = 4 corner fans (N triangles each) + 1 center rect (2 tris)
     + 4 edge rects (2 tris each) = 4N + 10 triangles total.
@@ -380,8 +379,7 @@ def tess_rounded_rect(
 
     Pre-fix design (c46): called `Backend.draw_batch_lists` directly,
     bypassing the command buffer and getting cleared by `Backend.frame_
-    begin` between widget evaluation and the demo walker. See
-    KNOWN_VISUAL_BUGS_2026-05-28.md Bug 2 for the regression details.
+    begin` between widget evaluation and the demo walker.
 
     Emits ONE CMD_TRIANGLES record per call (the tessellation produces
     4*N + 10 triangles — too large to encode in a CMD_RECT, which can

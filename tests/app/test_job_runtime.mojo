@@ -1,6 +1,6 @@
 """Pure tests for the backend-neutral job runtime.
 
-Run: cd /home/alex/MojoUI && pixi run test-job-runtime
+Run: pixi run test-job-runtime
 """
 
 from mojoui.app.job_runtime import (

@@ -25,7 +25,7 @@ Interaction: clicking a data row selects it (returns the new selection).
 `selected_row == -1` means no selection. A row index past the data is
 simply never highlighted (harmless if rows shrink under a stale index).
 
-`.copy()` discipline per MOJO_NOTES.md.
+`.copy()` discipline per Mojo implementation notes.
 """
 
 from mojoui.core.types import Vec2, Rect, Color

@@ -15,7 +15,7 @@ Layout (3 columns):
   - RIGHT panel: queue list (running + queued w/ per-job progress) · history ·
     perf footer (stub constants unless a real backend feeds metrics).
 
-DEFERRED (per PLAN_M4 v1 scope): Video mode (frames/fps), RON persistence
+DEFERRED (per M4 scope scope): Video mode (frames/fps), RON persistence
 (state is in-memory only), NVML perf, the controlnet panel, egui-dnd LoRA
 reorder.
 

@@ -5,7 +5,7 @@ Run: `pixi run test-slider`
 Exercises the BEHAVIOR step of the microui 6-step recipe — drag-from-here
 semantics with mouse_x → value mapping, plus endpoint clamping.
 
-JIT note (per MOJO_NOTES.md): tests use `Context.begin_frame_no_input` so
+JIT note (per Mojo implementation notes): tests use `Context.begin_frame_no_input` so
 the JIT does not need to resolve `mojoui_get_mouse_*` C symbols.
 
 Test sequence per drag: the slider becomes CTRL_ACTIVE only AFTER the press

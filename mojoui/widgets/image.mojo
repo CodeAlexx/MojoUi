@@ -33,7 +33,7 @@ over it. If an app needs a clickable image, the convention is to wrap
 `image_rect` inside a manual `update_control` block (or to use a real
 `image_button` widget, which is deferred).
 
-The `.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+The `.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
 `Rect` and `Color` are `Copyable, Movable` but NOT `ImplicitlyCopyable`.
 Every read of a function parameter into another call needs explicit
 `.copy()` — the body below threads `.copy()` wherever required.
@@ -65,7 +65,7 @@ def image(mut ctx: Context, texture_id: UInt32):
 
     # 3. draw — emit a CMD_IMAGE with white tint (no per-pixel modulation).
     #    Local `tint` then `.copy()` into emit_image is the canonical pattern
-    #    for Color values per MOJO_NOTES.md (Color is Copyable-not-
+    #    for Color values per Mojo implementation notes (Color is Copyable-not-
     #    ImplicitlyCopyable, so the read of `tint` for the call needs .copy()).
     var tint = Color(255, 255, 255, 255)
     _ = ctx.commands.emit_image(rect.copy(), texture_id, tint.copy())

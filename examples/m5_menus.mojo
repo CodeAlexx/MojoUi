@@ -32,7 +32,7 @@ struct MenuDemoState(Movable):
     kept across frames so InputState's edge detector and ControlState's
     active/focus slots survive — otherwise CTRL_RELEASED never fires and
     the menu buttons swallow every click. See
-    HANDOFF_2026-05-28_KITCHEN_SINK.md "Persistent Context fix"."""
+    implementation notes "Persistent Context fix"."""
 
     var ctx: Context
     var menus: List[MenuSpec]

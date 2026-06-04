@@ -3,7 +3,7 @@
 Mirrors EriGui's runtime progress system (`erigui-runtime/src/lib.rs`:
 `NodeStart` / `NodeStep` / `NodeDone` / `NodeError` emitted over an
 `mpsc::channel` and polled by the UI thread each frame). MojoUI has no
-channel primitive (per `AUDIT_erigui_nodes.md` risk #3), so the contract
+channel primitive (per `EriGui node audit notes` risk #3), so the contract
 is simpler and synchronous: whatever drives execution appends
 `ProgressEvent`s to a `List`, and the UI `drain`s that list into a
 `ProgressState` (node_id → status) once per frame. There is NO threading

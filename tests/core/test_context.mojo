@@ -8,7 +8,7 @@ id_stack push/pop/get_id with contextual hashing, layout shortcut forwarding,
 update_control forwarding, draw_rect / draw_text command emission, theme
 default font setter, and a two-frame "reset between frames" check.
 
-JIT note: per MOJO_NOTES.md "mojo run (JIT) does NOT dlopen the shared
+JIT note: per Mojo implementation notes "mojo run (JIT) does NOT dlopen the shared
 library", `input.poll()` (inside `begin_frame`) would trigger
 "Symbols not found" for `mojoui_get_mouse_*` / `mojoui_get_key` under
 `mojo run`. Tests instead use `begin_frame_no_input(window_size, mouse_pos,

@@ -243,7 +243,7 @@ def _slice_chars(src: List[UInt8], start: Int32, n: Int32) -> List[UInt8]:
 # ============================================================================
 # memmove-equivalent slides (bounds-safe: out-of-range writes are dropped,
 # which exactly matches stb's intent — the only over-write in stb lands on a
-# record being discarded). See SKEPTIC note in tests.
+# record being discarded). See the regression tests for coverage.
 # ============================================================================
 
 

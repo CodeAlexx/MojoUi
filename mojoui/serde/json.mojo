@@ -1,7 +1,7 @@
 """JsonValue tagged-union + emit/parse for MojoUI workflow round-trip (M2.5).
 
 Pure Mojo, NO FFI. Invariants from EriGui ("Serde Schema" in
-`/home/alex/mojoui-audit/AUDIT_erigui_nodes.md`): object keys sorted
+`internal audit notes`): object keys sorted
 alphabetically at emit (VCS-stable); numbers Float64 (integers up to 2^53
 exact); no JSON5 (no comments, no trailing commas, no NaN/Infinity, no
 `\\uXXXX` — sub-0x20 bytes besides `\\n`/`\\r`/`\\t` emit `\\u0000` as a
@@ -19,7 +19,7 @@ raises`; `JsonParser`; `get_object_field`/`set_object_field`/`equals`.
 Deferred: `\\uXXXX`, streaming I/O, JSON5, schema-aware fast-paths.
 """
 
-# Kind tag constants (comptime, NOT alias — per MOJO_NOTES.md c11+)
+# Kind tag constants (comptime, NOT alias — per Mojo implementation notes c11+)
 
 comptime JsonKind = Int32
 

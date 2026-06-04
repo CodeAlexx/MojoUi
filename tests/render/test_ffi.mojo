@@ -8,7 +8,7 @@ Verifies (statically, without opening a window — GPU may be busy):
      parameter type — compile-only proof; we do NOT actually invoke it
      since that would block on sapp_run.
 
-Run: cd /home/alex/MojoUI && LD_LIBRARY_PATH=. pixi run mojo run -I . tests/render/test_ffi.mojo
+Run: LD_LIBRARY_PATH=. pixi run mojo run -I . tests/render/test_ffi.mojo
 """
 
 from mojoui.render.ffi import (

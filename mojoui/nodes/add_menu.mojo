@@ -2,7 +2,7 @@
 spawn list. M2.5 chunk 40.
 
 Mirrors EriGui's `AddNodeMenuState` from `erigui-widgets/src/node_graph/
-add_menu.rs` (per `AUDIT_erigui_nodes.md` §"Context Menu / Node Spawning
+add_menu.rs` (per `EriGui node audit notes` §"Context Menu / Node Spawning
 UX"): a retained menu state lives across frames (`open`, `anchor`,
 `world_spawn_pos`, `search_text`, `selected_idx`), the rendering function
 is immediate-mode and re-runs each frame. EriGui decouples the registry
@@ -52,7 +52,7 @@ M2.5 deliberate omissions (per brief WHAT-NOT-to-do; c41+ picks up):
     "allocate-via-add_node, remove, append-from-registry.make_node". M3
     refactors Graph to accept a pre-built Node atomically.
 
-Forbidden-syntax audit (MOJO_NOTES.md cumulative): no `fn` (c8), no
+Forbidden-syntax audit (Mojo implementation notes cumulative): no `fn` (c8), no
 `@value` (c16), no `Stringable` (c8), no module-level `var` (c10), no new
 `alias` (c11; `comptime` only), no `unsafe_cstr_ptr` (c7), no explicit
 `__copyinit__` (c32/c33). `.copy()` at every Vec2/Rect/Color/String read

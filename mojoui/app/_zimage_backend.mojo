@@ -7,8 +7,8 @@ weights) env merged in.
 
 ## The env split (why this file exists)
 
-- MojoUI lives in `/home/alex/MojoUI` (package `mojoui`, modular + C floor).
-- serenitymojo lives in `/home/alex/mojodiffusion` (package `serenitymojo`,
+- MojoUI lives in `the MojoUI repo` (package `mojoui`, modular + C floor).
+- serenitymojo lives in `<path-to-mojodiffusion>` (package `serenitymojo`,
   MAX + weights), a SEPARATE pixi project.
 
 A single binary importing both is an env-merge problem we do NOT solve today.
@@ -22,7 +22,7 @@ working and `pixi run inference` / `pixi run test` stay green in MojoUI's env.
 When the GPU is free and the two envs are merged, flip `ZIMAGE_REAL_BACKEND` to
 True and build with serenitymojo on the import path:
 
-    cd /home/alex/MojoUI && mojo build -I . -I /home/alex/mojodiffusion \\
+    mojo build -I . -I <path-to-mojodiffusion> \\
       -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm \\
       examples/m8_inference_ui.mojo -o /tmp/mojoui_m8_real
 
@@ -30,7 +30,7 @@ Then the `_real_zimage_generate` branch below calls serenitymojo's
 `zimage_generate(prompt, negative, steps, cfg, seed, width, height, events,
 ctx)` (which preserves the GPU-verified denoise numerics; the only behavioral
 change vs the verified comptime-exact run is the fixed-padded caption — flag
-that for parity re-verification, see /home/alex/MojoUI/ZIMAGE_WIRING.md).
+that for parity re-verification, see Z-Image wiring notes).
 
 This file has NO `from serenitymojo` import while the flag is False so MojoUI's
 env never needs MAX or the weights to compile.
@@ -139,8 +139,8 @@ def _real_zimage_generate(
         String(
             "ZIMAGE_REAL_BACKEND is enabled but _real_zimage_generate is not"
             " wired in this build — merge the serenitymojo env (-I"
-            " /home/alex/mojodiffusion) and replace this body. See"
-            " ZIMAGE_WIRING.md."
+            " <path-to-mojodiffusion>) and replace this body. See"
+            " Z-Image wiring notes."
         )
     )
 

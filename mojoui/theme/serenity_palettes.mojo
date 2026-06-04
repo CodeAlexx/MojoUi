@@ -1,7 +1,7 @@
 """Serenity/DearPyGui-inspired theme palette registry.
 
 Source reference:
-  `/home/alex/serenity/serenity/ui/theme.py`
+  `serenity/serenity/ui/theme.py`
 
 Serenity's Python UI defines DearPyGui palettes in terms of ImGui/DPG tokens
 such as `mvThemeCol_WindowBg`, `mvThemeCol_FrameBg`, and

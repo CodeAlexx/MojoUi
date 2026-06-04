@@ -41,7 +41,7 @@ static void (*g_frame_fn)(void) = NULL;
  * as runtime function pointers (c7's "capturing error-swap"). The canonical
  * fix (c50) is this 2-symbol set/get pair backed by a separate static slot —
  * NOT sapp_userdata, because sapp_desc.user_data is only settable at init
- * time and we want it mutable later. See /home/alex/mojoui-audit/MOJO_NOTES.md
+ * time and we want it mutable later. See Mojo implementation notes
  * "Module-level state for frame callbacks". */
 static void* g_user_data = NULL;
 static int  g_window_width  = 0;
@@ -122,7 +122,7 @@ static void platform_init_cb(void) {
      * sapp's init callback). Calling mojoui_render_init() from Mojo BEFORE
      * mojoui_run_blocking would fail silently — there is no GL context yet.
      * So the C floor self-initializes the render subsystem here. Documented
-     * in /home/alex/mojoui-audit/MOJO_NOTES.md ("render_init timing"). */
+     * in Mojo implementation notes ("render_init timing"). */
     (void)mojoui_render_init();
 }
 static void platform_frame_cb(void) {

@@ -19,7 +19,7 @@ The serenitymojo `zimage_generate` is a single blocking GPU call; in this
 frame-driven shell we model it as: emit Started, advance one logical step per
 N frames emitting Progress, then on the final step invoke the adapter and emit
 Done (or Failed). When the real backend is wired, the adapter's blocking call
-replaces the per-step simulation (the events still fire; see ZIMAGE_WIRING.md).
+replaces the per-step simulation (the events still fire; see Z-Image wiring notes).
 
 ## Cancel policy
 

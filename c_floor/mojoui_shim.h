@@ -24,9 +24,9 @@ extern "C" {
  * colored geometry.
  *
  * See:
- *   /home/alex/MojoUI/MAP.md          — wayfinding
- *   docs/MOJOUI_KERNELS.md             — full per-function notes
- *   docs/MOJOUI_CONVENTIONS.md         — vertex / color / coord
+ *   project map          — wayfinding
+ *   public ABI notes             — full per-function notes
+ *   public ABI notes         — vertex / color / coord
  * ============================================================ */
 
 

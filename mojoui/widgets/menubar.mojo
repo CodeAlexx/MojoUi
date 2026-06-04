@@ -9,7 +9,7 @@ previously-open menu (mutual exclusion). When a menu is open, the popup
 list is drawn beneath the button using `popup(...)`; clicking an item
 returns `(menu_idx, item_idx)` to the caller and closes the menu.
 
-State ownership (per MOJOUI_NOTES.md "Module-level `var` is REJECTED"):
+State ownership (per Mojo implementation notes "Module-level `var` is REJECTED"):
   `open_menu` is a caller-managed `Int32`. -1 means no menu is open; a
   non-negative value is the index of the currently-open menu in `menus`.
   The widget toggles this directly. Same pattern as combobox's `is_open`.
@@ -62,7 +62,7 @@ struct MenuSpec(Copyable, Movable):
     dropdown popup.
 
     `Copyable, Movable` but NOT `ImplicitlyCopyable` (matches `String` /
-    `List[String]`). Every read needs `.copy()` — see MOJO_NOTES.md
+    `List[String]`). Every read needs `.copy()` — see Mojo implementation notes
     "Copyable ≠ ImplicitlyCopyable".
     """
 
@@ -162,7 +162,7 @@ def menubar(
         ctx.draw_rect(brect.copy(), bg^)
 
         # Label text — centered-ish in the button. Same font_id==0 guard
-        # as combobox per SKEPTIC_FINDINGS_M1 FRAGILE #5.
+        # as combobox per regression notes FRAGILE #5.
         if ctx.theme.font_id != 0:
             var text_pos = Vec2(
                 brect.x + Float32(ctx.theme.padding),

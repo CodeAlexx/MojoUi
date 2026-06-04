@@ -12,7 +12,7 @@ Microui 6-step recipe (same shape as `basic.mojo::button`, c17):
 `mut value: Bool` is read AND written — caller stores the boolean state
 externally (microui-style, no widget retained state). `Bool` is
 `ImplicitlyCopyable` (no `.copy()` needed); Color/Rect/Vec2 reads still
-need `.copy()` per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable".
+need `.copy()` per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable".
 """
 
 from mojoui.core.types import Vec2, Rect, Color
@@ -97,7 +97,7 @@ def checkbox(mut ctx: Context, label: String, mut value: Bool) -> Bool:
     # button's vertical-center calc.
     # Caller contract: call `ctx.set_default_font(<id>)` before the frame if
     # the label should render. When `ctx.theme.font_id == 0` the text draw is
-    # SKIPPED — see SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE #5: emitting
+    # SKIPPED — see regression notes FRAGILE #5: emitting
     # CMD_TEXT with font_id=0 would corrupt the M3 renderer adapter's
     # font-id lookup.
     if ctx.theme.font_id != 0:

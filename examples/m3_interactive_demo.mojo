@@ -138,7 +138,7 @@ def _frame() -> None:
     renders the command buffer to GPU, presents.
 
     Must match `void (*)(void)` (no raises). UnsafePointer is non-nullable
-    in current beta (MOJO_NOTES c50 finding b) — the c50 contract guarantees
+    in current beta (current Mojo beta behavior) — the c50 contract guarantees
     store_user_state was called in main before run_blocking, so no NULL guard.
     """
     var state_ptr = retrieve_user_state[AppState]()

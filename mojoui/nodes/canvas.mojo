@@ -6,7 +6,7 @@ cubic-bezier wire (c38), and the canvas drives node-drag + single-select
 interaction directly mutating the caller-owned `CanvasState` + `Graph`.
 
 Mirrors EriGui's `NodeGraph` widget (`erigui-widgets/src/node_graph/mod.rs`)
-per AUDIT_erigui_nodes.md "Canvas / Visual Layer":
+per EriGui node audit notes "Canvas / Visual Layer":
 
   - `pan: Vec2`, `zoom: Float32` — affine `screen = world * zoom + pan`.
   - `Interaction` variants — M2.5 ships **NodeDrag + Pan only**. LinkDrag
@@ -40,7 +40,7 @@ zoom (wheel-event FFI is M3), minimap / grid dots / port hover glow,
 connect-time type checking, right-click add-menu.
 
 `.copy()` discipline: `Vec2`/`Rect`/`Color` are Copyable-not-
-ImplicitlyCopyable (MOJO_NOTES.md c15) — every read into another call
+ImplicitlyCopyable (Mojo implementation notes c15) — every read into another call
 needs `.copy()`. `Float32`/`Bool`/`UInt64` ARE ImplicitlyCopyable;
 `String` is ImplicitlyCopyable per c29.
 """
@@ -347,7 +347,7 @@ def begin_node_canvas(
     # Push an id_stack scope so per-node ids derived below (`"node_<N>"`)
     # don't collide between two canvases on the same Context. Paired with
     # `ctx.pop_id()` in `end_node_canvas`. Matches the scroll_area /
-    # window_panel convention from the M2 bugfix (SKEPTIC_FINDINGS_M2
+    # window_panel convention from the M2 bugfix (regression notes
     # FRAGILE #3); re-applied here per M2.5 skeptic FRAGILE #1.
     ctx.push_id_str(id_str)
 

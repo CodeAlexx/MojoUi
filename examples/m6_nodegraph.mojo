@@ -71,7 +71,7 @@ comptime _RUN_FRAMES_PER_NODE: Int = 24
 struct NodeGraphDemoState(Movable):
     """Persistent state — the Context MUST survive across frames so the
     input edge-detector + control active/focus slots persist (same reason
-    as kitchen/menus; see HANDOFF persistent-Context fix)."""
+    as kitchen/menus; both demos need a persistent Context)."""
 
     var ctx: Context
     var registry: NodeRegistry

@@ -9,7 +9,7 @@ Three structs:
 
 1. **`Edge`** — `{ from_node, from_port, to_node, to_port }`. Ports are
    identified by NAME, not index (the load-bearing EriGui invariant —
-   `AUDIT_erigui_nodes.md` "Connection / Edge Model"). Adding/reordering
+   `EriGui node audit notes` "Connection / Edge Model"). Adding/reordering
    ports must not silently reroute saved workflows.
 
 2. **`Graph`** — `{ nodes, edges, id_alloc }`. Movable-only (not Copyable
@@ -47,7 +47,7 @@ from mojoui.nodes.node import Node
 struct Edge(Copyable, Movable):
     """One connection between an output of `from_node` and an input of
     `to_node`. Ports identified by NAME (EriGui invariant). No explicit
-    `__copyinit__` per MOJO_NOTES.md c32/c33 — auto-derived handles the
+    `__copyinit__` per Mojo implementation notes c32/c33 — auto-derived handles the
     two String fields correctly via each field's own `.copy()`.
     """
 

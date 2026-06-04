@@ -9,7 +9,7 @@ The capstone of the M2.5 serde stack. Builds on:
 - `mojoui/nodes/graph.mojo` (c36) — `Graph` + `Edge`.
 
 The on-disk JSON format mirrors EriGui's wire shape verbatim (see
-`/home/alex/mojoui-audit/AUDIT_erigui_nodes.md` §"Serde Schema"):
+`internal audit notes` §"Serde Schema"):
 
 ```json
 {

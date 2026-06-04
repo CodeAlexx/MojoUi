@@ -1,12 +1,12 @@
 """Port + NodeValueType — typed input/output sockets on a Node.
 
-Mirrors EriGui's two-enum split (see AUDIT_erigui_nodes.md "Socket / Port Type
+Mirrors EriGui's two-enum split (see EriGui node audit notes "Socket / Port Type
 System"): `NodeValueType` is the schema/connect-time tag used to validate that
 two ports are type-compatible BEFORE a wire is committed. The runtime
 `NodeValue` (which carries the actual tensor / handle / arch-tag) is a separate
 construct that lands later in M2.5.
 
-Design invariants from `AUDIT_erigui_nodes.md`:
+Design invariants from `EriGui node audit notes`:
   - **Port identity by NAME, not index.** Adding or reordering ports in a node
     schema must not silently reroute saved workflows; the canonical stable
     identifier is the port's `name` string. The serialised workflow stores
@@ -30,7 +30,7 @@ EriGui's `NodeValueType` (`erigui-nodes/src/lib.rs:70-78`):
 for an unknown name string — callers should treat it as the "unrecognised
 type" error case.
 
-Per MOJO_NOTES.md "Confirmed in M1 chunk 11 (core/id.mojo)": `alias TypeName
+Per Mojo implementation notes "Confirmed in M1 chunk 11 (core/id.mojo)": `alias TypeName
 = T` is deprecated in current beta, replaced by `comptime TypeName = T`.
 Used here for the `NodeValueType` type-alias declaration and every per-
 variant value constant.
@@ -133,7 +133,7 @@ struct Port(Copyable, Movable, Writable):
     Fields:
       - `name`: stable port identifier — workflow JSON references this by
         string, NEVER by positional index (EriGui invariant; see file
-        docstring + `AUDIT_erigui_nodes.md` "Port identity by name, not
+        docstring + `EriGui node audit notes` "Port identity by name, not
         index").
       - `value_type`: the `NodeValueType` tag — used for connect-time
         compatibility checking via `ports_compatible`.

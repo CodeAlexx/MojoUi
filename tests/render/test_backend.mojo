@@ -10,7 +10,7 @@ What this does NOT test (deferred to M0-gate where the GPU is available):
   - Actually drawing pixels (same).
   - End-to-end font load + draw (same).
 
-Run: cd /home/alex/MojoUI && pixi run test-backend
+Run: pixi run test-backend
 """
 
 from mojoui.render.backend import (

@@ -1,6 +1,6 @@
 """MojoUI m9 — native trainer UI shell.
 
-Trainer-first screen based on `/home/alex/Downloads/rust trainer ui.zip`.
+Trainer-first screen based on `the trainer UI mockup archive`.
 This is still a prototype, but it now uses the Rust Trainer warm palette,
 proper column frames, and live-window scaling for high-DPI/4K displays.
 """

@@ -3,7 +3,7 @@
 The backend remains the default stub, so this test is CPU-only and does not
 import serenitymojo or touch model weights.
 
-Run: cd /home/alex/MojoUI && pixi run test-zimage-bridge
+Run: pixi run test-zimage-bridge
 """
 
 from mojoui.app.inference_model import InferenceState

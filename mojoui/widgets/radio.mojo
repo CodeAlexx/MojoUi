@@ -24,7 +24,7 @@ Two radios with the same label under the same id_stack parent WILL collide
 — callers needing same-label groups should `ctx.push_id_str("group_name")`
 around the group, the standard microui pattern.
 
-`.copy()` discipline (per MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable"):
+`.copy()` discipline (per Mojo implementation notes "Copyable ≠ ImplicitlyCopyable"):
 `Color`/`Rect`/`Vec2`/`DefaultTheme` field reads need explicit `.copy()`. The
 implementation threads `.copy()` everywhere required; the test suite catches
 any regression by exercising every code path that emits a draw command.
@@ -139,7 +139,7 @@ def radio(
     # centre (same calc as button/label in basic.mojo).
     # Caller contract: call `ctx.set_default_font(<id>)` before the frame if
     # the label should render. When `ctx.theme.font_id == 0` the text draw is
-    # SKIPPED — see SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE #5.
+    # SKIPPED — see regression notes FRAGILE #5.
     if ctx.theme.font_id != 0:
         var label_pos = Vec2(
             outer_x + outer_size + Float32(ctx.theme.padding),

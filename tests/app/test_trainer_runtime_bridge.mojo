@@ -1,6 +1,6 @@
 """Tests for the CPU trainer runtime bridge.
 
-Run: cd /home/alex/MojoUI && pixi run test-trainer-runtime
+Run: pixi run test-trainer-runtime
 """
 
 from mojoui.app.job_runtime import (

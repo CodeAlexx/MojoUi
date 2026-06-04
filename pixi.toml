@@ -45,7 +45,7 @@ nodes = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor examples/m
 # which the JIT resolves eagerly through the static call graph. Building
 # against libmojoui_floor.so links the symbols at compile time; no live
 # window is opened (no Backend.run_blocking call) so the runtime visual gate
-# remains deferred per MOJO_NOTES.md.
+# remains deferred per Mojo implementation notes.
 themed = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m3_themed_gallery.mojo -o /tmp/mojoui_m3_themed", depends-on = ["build-c"] }
 # c53 — FIRST INTERACTIVE DEMO. Opens a real window with mouse + keyboard
 # input + persistent state across frames using the c50 user_data extension.

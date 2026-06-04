@@ -2,7 +2,7 @@
 
 `CommandBuffer` is a flat byte stream of tagged draw commands the renderer
 walks at frame end. Every command begins with a `CmdHeader { kind, size }`
-(microui invariant per `/home/alex/mojoui-audit/AUDIT_microui.md` "Command
+(microui invariant per `internal audit notes` "Command
 List"), so the consumer advances by `size` bytes regardless of variant.
 
 JUMP commands enable z-order without re-sorting draws: each container emits
@@ -22,7 +22,7 @@ from std.memory import UnsafePointer
 
 from mojoui.core.types import Color, Rect, Vec2
 
-# --- Command kind tags (`comptime` not `alias` — MOJO_NOTES.md) ---
+# --- Command kind tags (`comptime` not `alias` — Mojo implementation notes) ---
 comptime DrawCmdKind = Int32
 comptime CMD_NONE: DrawCmdKind = 0    # sentinel — never in well-formed buffer
 comptime CMD_JUMP: DrawCmdKind = 1    # skip reader to absolute offset (z-order)
@@ -53,7 +53,7 @@ comptime CMD_ICON_SIZE: Int32 = HEADER_SIZE + _RECT_BYTES + 4 + _COLOR_BYTES
 comptime CMD_IMAGE_SIZE: Int32 = HEADER_SIZE + _RECT_BYTES + 4 + _COLOR_BYTES
 
 # --- Byte encoders / decoders (host-endian; not portable across hosts) ---
-# Pattern (per MOJO_NOTES.md "UnsafePointer(to=var)"): bitcast a primitive's
+# Pattern (per Mojo implementation notes "UnsafePointer(to=var)"): bitcast a primitive's
 # stack pointer to UInt8 and walk index 0..N-1. Same trick as backend.mojo's
 # ImDrawVert bit-reinterpret.
 
@@ -444,7 +444,7 @@ struct CommandBuffer(Movable):
         Asserts the byte at `jump_offset` is a CMD_JUMP header — silently
         patching into a non-JUMP command would corrupt the 4 bytes of
         whatever field happens to live at `jump_offset+HEADER_SIZE` (e.g.
-        the rect.x of a CMD_RECT). See SKEPTIC_FINDINGS_M1_2026-05-28.md
+        the rect.x of a CMD_RECT). See regression notes
         FRAGILE #1. Invariant for callers: only pass an offset returned by
         a prior `emit_jump` on the SAME CommandBuffer.
 
@@ -481,7 +481,7 @@ struct CommandBuffer(Movable):
     def read_jump_dst(self, offset: Int32) -> Int32:
         """Destination offset of a JUMP at `offset` (caller ensures CMD_JUMP).
 
-        WALKER INVARIANT (see SKEPTIC_FINDINGS_M1_2026-05-28.md FRAGILE #2):
+        WALKER INVARIANT (see regression notes FRAGILE #2):
         a well-formed JUMP destination MUST be strictly greater than the
         JUMP's own offset (forward only). Walkers should defensively check
         that `new_off > prev_off` (or some similar monotonic-advance

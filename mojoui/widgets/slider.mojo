@@ -51,7 +51,7 @@ Visual (step 5 of the recipe)
 The 4 px / 12 px constants live as module-level `comptime` for now; M3 will
 move them into `DefaultTheme` once that grows past its current placeholder set.
 
-`.copy()` discipline (MOJO_NOTES.md "Copyable ≠ ImplicitlyCopyable")
+`.copy()` discipline (Mojo implementation notes "Copyable ≠ ImplicitlyCopyable")
 --------------------------------------------------------------------
 `Rect`/`Color`/`Vec2`/`DefaultTheme` are `Copyable, Movable` but NOT
 `ImplicitlyCopyable`. The slot rect is read at least 4× (update_control,

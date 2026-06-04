@@ -14,7 +14,7 @@ module renders the resulting menu (on the popup layer, via the M5
   - **Rename**    → set `state.renaming_node` and return. This module does
                     NOT draw a text field — `text_edit` reaches the FFI
                     input symbols which would taint the pure node layer's
-                    `mojo run` tests (see HANDOFF §6). A live app overlays a
+                    `mojo run` tests (see implementation notes). A live app overlays a
                     `text_edit` bound to `graph.nodes[i].title` while
                     `renaming_node` is set, then clears it. Headless callers
                     just observe the flag.

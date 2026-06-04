@@ -20,7 +20,7 @@ back to `dark_theme()` for any unknown name. Useful for caller-side theme
 selection from a config file or CLI flag (`--theme=light`).
 
 References:
-  - `/home/alex/mojoui-audit/AUDIT_egui_ecosystem.md` §"Aesthetic Patterns"
+  - `internal audit notes` §"Aesthetic Patterns"
     — rerun's dark theme is the reference; `design_tokens.rs` semantic
     naming + 8px grid + 6px default radius.
   - rerun `crates/viewer/re_ui/src/design_tokens.rs` (semantic field names).

@@ -1,7 +1,7 @@
 """Serializable visual node — pure data, no behavior.
 
 Mirrors the EriGui visual node (`erigui-widgets/src/node_graph/mod.rs:61-71`).
-Per `AUDIT_erigui_nodes.md`, the visual `Node` is plain serializable data; the
+Per `EriGui node audit notes`, the visual `Node` is plain serializable data; the
 behavior lives in a registry (`NodeTypeDef` tagged union — chunk 37) and is
 joined to the visual node by its `type_id` string at execute time.
 
