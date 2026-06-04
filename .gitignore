@@ -1,0 +1,29 @@
+# Build artifacts
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+
+# Mojo
+__mojocache__/
+.mojo_modular/
+
+# Pixi
+.pixi/
+pixi.lock
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Generated
+docs/screenshots/
+build/
+target/
+
+# Test artifacts
+tests/output/

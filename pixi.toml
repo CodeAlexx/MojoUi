@@ -1,0 +1,155 @@
+[workspace]
+name = "mojoui"
+version = "0.1.0-alpha"
+description = "Modern Mojo immediate-mode GUI library with retained node graph"
+authors = ["Alex"]
+channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+modular = ">=26.1.0.dev2025122205,<27"
+imagemagick = ">=7.1.2_24,<8"
+
+[tasks]
+build-c = "make -C c_floor"
+build = { depends-on = ["build-c"] }
+clean = "make -C c_floor clean"
+# LD_LIBRARY_PATH=. so the dynamic linker finds libmojoui_floor.so in the
+# project root (where the C-floor Makefile drops it). Tasks invoked via
+# `pixi run <name>` execute from this pixi.toml's directory.
+hello = "LD_LIBRARY_PATH=. mojo run -I . examples/m0_hello.mojo"
+# M1 demo built to a real binary (NOT `mojo run` / JIT) so libmojoui_floor.so
+# can be linked at compile time. The JIT path materialises every reachable
+# `external_call` symbol eagerly and trips "Symbols not found" on the gated
+# Backend dispatch — building once produces a real executable that respects
+# the runtime-False gate properly. The build step is fast (<5s) and the
+# resulting binary lives under /tmp.
+m1 = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor examples/m1_button.mojo -o /tmp/mojoui_m1_demo && LD_LIBRARY_PATH=. /tmp/mojoui_m1_demo", depends-on = ["build-c"] }
+# M2 capstone gallery — same build-then-run shape as m1 because
+# text_edit/text_area/combobox internally reach FFI symbols
+# (mojoui_get_input_text, mojoui_input_text_length, mojoui_get_key) that
+# `mojo run` (JIT) cannot resolve under the static call graph. Building
+# against libmojoui_floor.so via `-Xlinker -L. -Xlinker -lmojoui_floor`
+# links the symbols at compile time; the gallery never actually runs
+# them (no GL context, no live input poll).
+gallery = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m2_widgets_gallery.mojo -o /tmp/mojoui_m2_gallery && LD_LIBRARY_PATH=. /tmp/mojoui_m2_gallery", depends-on = ["build-c"] }
+# M2.5 capstone — node graph + serde round-trip demo. Same build-then-run
+# shape as `gallery`: the canvas widget reads `ctx.input.mouse_held`/
+# `mouse_released` whose FFI symbols (`mojoui_get_mouse_*`) the JIT
+# resolves eagerly through the static call graph. Building against
+# libmojoui_floor.so links the symbols at compile time; the runtime gate
+# never fires (begin_frame_no_input keeps them unreached at runtime).
+nodes = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor examples/m2_5_node_graph.mojo -o /tmp/mojoui_nodes_demo && LD_LIBRARY_PATH=. /tmp/mojoui_nodes_demo", depends-on = ["build-c"] }
+# M3 capstone — themed gallery showcase. Same build-then-run shape as the
+# other capstones: the tessellator's tess_* helpers reach Backend.draw_batch
+# which the JIT resolves eagerly through the static call graph. Building
+# against libmojoui_floor.so links the symbols at compile time; no live
+# window is opened (no Backend.run_blocking call) so the runtime visual gate
+# remains deferred per MOJO_NOTES.md.
+themed = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m3_themed_gallery.mojo -o /tmp/mojoui_m3_themed", depends-on = ["build-c"] }
+# c53 — FIRST INTERACTIVE DEMO. Opens a real window with mouse + keyboard
+# input + persistent state across frames using the c50 user_data extension.
+# Click theme-switcher buttons to swap palettes live, click the counter
+# button to increment a persistent Int32, drag the slider to set a Float32.
+# Build-then-run shape so the FFI symbols (`mojoui_set_user_data`,
+# `mojoui_get_user_data`, `mojoui_draw_batch`) resolve at link time
+# (JIT can't dlopen them); extra `-Xlinker -lm` per the c49 finding because
+# the tessellator's sin/cos calls link against `sincosf` from libm.
+interactive = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m3_interactive_demo.mojo -o /tmp/mojoui_interactive && LD_LIBRARY_PATH=. /tmp/mojoui_interactive", depends-on = ["build-c"] }
+# m4 — live kitchen-sink: every widget (checkbox/radio/slider/drag_value/
+# progress_bar/text_edit/text_area/combobox/collapsing_header/separator)
+# in one real window. Build-then-run for the same reasons as `interactive`.
+kitchen = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m4_kitchen_sink.mojo -o /tmp/mojoui_m4_kitchen && LD_LIBRARY_PATH=. /tmp/mojoui_m4_kitchen", depends-on = ["build-c"] }
+# m5 — live menu-system demo: top menubar (File/Edit/Help), right-click
+# context menu on the canvas, status line. Build-then-run for the same
+# reasons as `kitchen` (FFI symbols the JIT can't dlopen).
+menus = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m5_menus.mojo -o /tmp/mojoui_m5_menus && LD_LIBRARY_PATH=. /tmp/mojoui_m5_menus", depends-on = ["build-c"] }
+
+# m6 — interactive node-graph: drag/pan, node + add context menus, wire
+# select+delete, per-node field bodies, progress badges, inline rename.
+# Build-then-run (FFI input + text_edit symbols the JIT can't dlopen).
+nodegraph = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m6_nodegraph.mojo -o /tmp/mojoui_m6_nodegraph && LD_LIBRARY_PATH=. /tmp/mojoui_m6_nodegraph", depends-on = ["build-c"] }
+
+# m7 — advanced widgets: tab bar switching between tree view + data table.
+widgets = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m7_widgets.mojo -o /tmp/mojoui_m7_widgets && LD_LIBRARY_PATH=. /tmp/mojoui_m7_widgets", depends-on = ["build-c"] }
+# c54 — serenitymojo UI stub (M4 preview). Static single-frame demo showing
+# the EXACT UI shape serenitymojo's app will use once M4 integration lands
+# (title bar + theme switcher + model picker + positive/negative prompts +
+# sampler controls + Generate button + progress bar + image preview rect).
+# Same build-then-run shape as `themed`: text_area + combobox reach FFI
+# symbols AND the preview helper calls `tess_rounded_rect` which reaches
+# `mojoui_draw_batch`; building against libmojoui_floor.so + libm resolves
+# all of them at link time. No live window — runtime visual gate deferred.
+serenity_ui = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/serenity_ui_stub.mojo -o /tmp/mojoui_serenity_ui && LD_LIBRARY_PATH=. /tmp/mojoui_serenity_ui", depends-on = ["build-c"] }
+# m8 — M4 interactive inference UI. 3-column text->image app
+# mirroring inference_ui: left params (collapsing headers), center canvas
+# (prompt/negative text_area + Generate/Cancel + synthetic gradient preview +
+# progress), right queue/history + mock perf footer. Build-then-run shape like
+# nodegraph/widgets: text_area/combobox + tess_rounded_rect reach FFI symbols
+# the JIT can't dlopen; +lm for the tessellator's sincosf.
+inference = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m8_inference_ui.mojo -o /tmp/mojoui_m8_inference && LD_LIBRARY_PATH=. /tmp/mojoui_m8_inference", depends-on = ["build-c"] }
+# m9 — native trainer UI shell. Trainer-first app based on the Rust Trainer
+# handoff, wired to the CPU-only trainer runtime bridge.
+trainer = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm examples/m9_trainer_ui.mojo -o /tmp/mojoui_m9_trainer && LD_LIBRARY_PATH=. /tmp/mojoui_m9_trainer", depends-on = ["build-c"] }
+test ="LD_LIBRARY_PATH=. mojo run -I . tests/core/test_types.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/render/test_ffi.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/render/test_backend.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/render/test_tessellator.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_input.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_id.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_layout.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_control.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_commands.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_cmd_triangles.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_context.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_basic.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_checkbox.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_radio.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_progress_bar.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_drag_value.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_slider.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_image.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_collapsing_header.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_scroll_area.mojo && mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm tests/widgets/test_text_edit.mojo -o /tmp/mojoui_test_te && LD_LIBRARY_PATH=. /tmp/mojoui_test_te && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_combobox.mojo && mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm tests/widgets/test_text_area.mojo -o /tmp/mojoui_test_ta && LD_LIBRARY_PATH=. /tmp/mojoui_test_ta && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_multiline_edit.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_window_panel.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_menu_system.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_tab_bar.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_tree.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_table.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_textedit.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_port.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_node.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_graph.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_registry.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_wires.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_canvas.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_add_menu.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_node_menu.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_progress.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/serde/test_version.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/serde/test_json.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/serde/test_workflow.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/theme/test_tokens.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/theme/test_typography.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/theme/test_themes.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/theme/test_serenity_palettes.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/animation/test_spring.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/app/test_user_data.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/app/test_inference_model.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/app/test_zimage_worker.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/app/test_inference_zimage_bridge.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/app/test_job_runtime.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/app/test_model_backend.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/app/test_trainer_model.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/app/test_trainer_runtime_bridge.mojo && LD_LIBRARY_PATH=. mojo run -I . tests/core/test_tab_cycling.mojo"
+test-types = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_types.mojo"
+test-ffi = "LD_LIBRARY_PATH=. mojo run -I . tests/render/test_ffi.mojo"
+test-backend = "LD_LIBRARY_PATH=. mojo run -I . tests/render/test_backend.mojo"
+test-tessellator = "LD_LIBRARY_PATH=. mojo run -I . tests/render/test_tessellator.mojo"
+test-id = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_id.mojo"
+test-input = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_input.mojo"
+test-layout = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_layout.mojo"
+test-control = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_control.mojo"
+test-commands = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_commands.mojo"
+test-cmd-triangles = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_cmd_triangles.mojo"
+test-context = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_context.mojo"
+test-basic = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_basic.mojo"
+test-checkbox = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_checkbox.mojo"
+test-radio = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_radio.mojo"
+test-progress-bar = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_progress_bar.mojo"
+test-drag-value = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_drag_value.mojo"
+test-slider = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_slider.mojo"
+test-image = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_image.mojo"
+test-collapsing-header = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_collapsing_header.mojo"
+test-scroll-area = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_scroll_area.mojo"
+# text_edit drives consume_text() which reaches FFI symbols the JIT can't
+# dlopen, so this test is build-then-run (links libmojoui_floor.so) rather
+# than `mojo run`. It stays headless — disable_ffi_text() + staged
+# pending_text mean no C-floor / GL context is touched.
+test-text-edit = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm tests/widgets/test_text_edit.mojo -o /tmp/mojoui_test_te && LD_LIBRARY_PATH=. /tmp/mojoui_test_te", depends-on = ["build-c"] }
+test-combobox = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_combobox.mojo"
+# text_area drives consume_text() (FFI) like text_edit, so build-then-run.
+test-text-area = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm tests/widgets/test_text_area.mojo -o /tmp/mojoui_test_ta && LD_LIBRARY_PATH=. /tmp/mojoui_test_ta", depends-on = ["build-c"] }
+test-multiline-edit = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_multiline_edit.mojo"
+test-window-panel = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_window_panel.mojo"
+test-port = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_port.mojo"
+test-node = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_node.mojo"
+test-graph = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_graph.mojo"
+test-registry = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_registry.mojo"
+test-version = "LD_LIBRARY_PATH=. mojo run -I . tests/serde/test_version.mojo"
+test-json = "LD_LIBRARY_PATH=. mojo run -I . tests/serde/test_json.mojo"
+test-wires = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_wires.mojo"
+test-canvas = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_canvas.mojo"
+test-workflow = "LD_LIBRARY_PATH=. mojo run -I . tests/serde/test_workflow.mojo"
+test-add-menu = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_add_menu.mojo"
+test-node-menu = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_node_menu.mojo"
+test-progress = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_progress.mojo"
+test-tab-bar = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_tab_bar.mojo"
+test-tree = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_tree.mojo"
+test-table = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_table.mojo"
+test-tokens = "LD_LIBRARY_PATH=. mojo run -I . tests/theme/test_tokens.mojo"
+test-typography = "LD_LIBRARY_PATH=. mojo run -I . tests/theme/test_typography.mojo"
+test-themes = "LD_LIBRARY_PATH=. mojo run -I . tests/theme/test_themes.mojo"
+test-spring = "LD_LIBRARY_PATH=. mojo run -I . tests/animation/test_spring.mojo"
+test-user-data = "LD_LIBRARY_PATH=. mojo run -I . tests/app/test_user_data.mojo"
+test-inference-model = "LD_LIBRARY_PATH=. mojo run -I . tests/app/test_inference_model.mojo"
+test-zimage-worker = "LD_LIBRARY_PATH=. mojo run -I . tests/app/test_zimage_worker.mojo"
+test-zimage-bridge = "LD_LIBRARY_PATH=. mojo run -I . tests/app/test_inference_zimage_bridge.mojo"
+test-job-runtime = "LD_LIBRARY_PATH=. mojo run -I . tests/app/test_job_runtime.mojo"
+test-model-backend = "LD_LIBRARY_PATH=. mojo run -I . tests/app/test_model_backend.mojo"
+test-trainer-model = "LD_LIBRARY_PATH=. mojo run -I . tests/app/test_trainer_model.mojo"
+test-trainer-runtime = "LD_LIBRARY_PATH=. mojo run -I . tests/app/test_trainer_runtime_bridge.mojo"
+test-serenity-palettes = "LD_LIBRARY_PATH=. mojo run -I . tests/theme/test_serenity_palettes.mojo"
+test-tab-cycling = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_tab_cycling.mojo"
+test-menu-system = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_menu_system.mojo"
+test-textedit = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_textedit.mojo"
