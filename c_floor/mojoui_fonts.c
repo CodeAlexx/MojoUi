@@ -243,7 +243,7 @@ static float mui_pack_color(int r, int g, int b, int a) {
  * Public ABI
  * =========================================================== */
 
-uint32_t mojoui_load_font(const char* path) {
+static uint32_t mui_load_font_cstr(const char* path) {
     /* find a free slot first so a missing-font error doesn't waste work */
     int slot = -1;
     for (int i = 0; i < MUI_FONT_MAX; i++) {
@@ -306,6 +306,26 @@ uint32_t mojoui_load_font(const char* path) {
     return (uint32_t)(slot + 1);   /* 1-based id; 0 reserved for error */
 }
 
+uint32_t mojoui_load_font(const char* path) {
+    return mui_load_font_cstr(path);
+}
+
+uint32_t mojoui_load_font_len(const char* path, int path_len) {
+    if (path == NULL || path_len <= 0) {
+        return mui_load_font_cstr(NULL);
+    }
+    char* bounded_path = (char*)malloc((size_t)path_len + 1u);
+    if (bounded_path == NULL) {
+        fprintf(stderr, "mojoui_load_font_len: failed to allocate path copy\n");
+        return 0;
+    }
+    memcpy(bounded_path, path, (size_t)path_len);
+    bounded_path[path_len] = '\0';
+    uint32_t font_id = mui_load_font_cstr(bounded_path);
+    free(bounded_path);
+    return font_id;
+}
+
 void mojoui_destroy_font(uint32_t font_id) {
     mui_font* f = mui_font_lookup(font_id);
     if (f == NULL) {
@@ -318,6 +338,12 @@ void mojoui_destroy_font(uint32_t font_id) {
     }
     free(f->ttf_buffer);
     memset(f, 0, sizeof(*f));
+}
+
+void mojoui_destroy_all_fonts(void) {
+    for (uint32_t i = 1; i <= MUI_FONT_MAX; i++) {
+        mojoui_destroy_font(i);
+    }
 }
 
 int mojoui_text_width(uint32_t font_id, int size_pt, const char* text, int text_len) {
@@ -439,7 +465,7 @@ int mojoui_draw_text(uint32_t font_id, int size_pt, const char* text, int text_l
     }
 
     if (n_indices > 0) {
-        mojoui_draw_batch(verts, n_verts, idx, n_indices, atlas->texture_id);
+        return mojoui_draw_batch_checked(verts, n_verts, idx, n_indices, atlas->texture_id);
     }
     return 1;
 }

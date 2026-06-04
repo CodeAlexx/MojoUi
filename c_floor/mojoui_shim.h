@@ -80,12 +80,15 @@ typedef enum {
  * ============================================================ */
 
 int   mojoui_init_window(int width, int height, const char* title);
+int   mojoui_init_window_len(int width, int height, const char* title, int title_len);
 void  mojoui_run_blocking(void (*frame_fn)(void));
 void  mojoui_request_close(void);
 int   mojoui_should_close(void);
 void  mojoui_poll_events(void);
 int   mojoui_get_window_width(void);
 int   mojoui_get_window_height(void);
+int   mojoui_get_display_width(void);
+int   mojoui_get_display_height(void);
 int   mojoui_get_mouse_x(void);
 int   mojoui_get_mouse_y(void);
 int   mojoui_get_mouse_button(int button);  /* button: MOJOUI_BTN_* */
@@ -114,6 +117,13 @@ void     mojoui_frame_end(void);
 void     mojoui_draw_batch(const float* verts, int n_verts,
                            const uint16_t* indices, int n_indices,
                            uint32_t texture_id);
+int      mojoui_draw_batch_checked(const float* verts, int n_verts,
+                                   const uint16_t* indices, int n_indices,
+                                   uint32_t texture_id);
+void     mojoui_set_clip_rect(int x, int y, int width, int height);
+void     mojoui_reset_clip_rect(void);
+int      mojoui_max_batch_verts(void);
+int      mojoui_max_batch_indices(void);
 uint32_t mojoui_make_texture(int width, int height, const uint8_t* rgba_pixels);
 void     mojoui_destroy_texture(uint32_t texture_id);
 
@@ -123,7 +133,9 @@ void     mojoui_destroy_texture(uint32_t texture_id);
  * ============================================================ */
 
 uint32_t mojoui_load_font(const char* path);  /* NULL/"" -> default search */
+uint32_t mojoui_load_font_len(const char* path, int path_len);
 void     mojoui_destroy_font(uint32_t font_id);
+void     mojoui_destroy_all_fonts(void);
 int      mojoui_text_width(uint32_t font_id, int size_pt, const char* text, int text_len);
 int      mojoui_text_height(uint32_t font_id, int size_pt);
 int      mojoui_draw_text(uint32_t font_id, int size_pt, const char* text, int text_len,

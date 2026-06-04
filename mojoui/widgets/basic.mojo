@@ -124,6 +124,13 @@ def _resolve_button_bg(ctx: Context, state_flags: Int32) -> Color:
     return ctx.theme.primary.copy()
 
 
+def _readable_text_on_fill(fill: Color) -> Color:
+    var yiq = Int(fill.r) * 299 + Int(fill.g) * 587 + Int(fill.b) * 114
+    if yiq >= 150000:
+        return Color(20, 20, 24, 255)
+    return Color(245, 245, 250, 255)
+
+
 # ============================================================================
 # button — the canonical 6-step widget
 # ============================================================================
@@ -242,7 +249,7 @@ def button(mut ctx: Context, label: String) -> Bool:
             ctx.theme.font_id,
             ctx.theme.font_size_pt,
             label_pos^,
-            ctx.theme.text.copy(),
+            _readable_text_on_fill(bg_color.copy()),
             label,
         )
 

@@ -35,6 +35,7 @@ from mojoui.core.commands import (
 )
 from mojoui.core.multiline_edit import MultiLineState
 from mojoui.render.backend import Backend
+from mojoui.render.command_renderer import render_context_commands
 from mojoui.render.ffi import (
     MOJOUI_KEY_RETURN,
 )
@@ -109,6 +110,9 @@ struct InferenceUIState(Movable):
 
     var pseudo_rng: UInt32   # for the randomize-seed button
     var font_id: UInt32
+    var win_w: Float32
+    var win_h: Float32
+    var scale: Float32
 
     def __init__(out self):
         self.ctx = Context()
@@ -127,6 +131,9 @@ struct InferenceUIState(Movable):
         self.sec_advanced = False
         self.pseudo_rng = 0x9E3779B9
         self.font_id = 0
+        self.win_w = _WIN_W
+        self.win_h = _WIN_H
+        self.scale = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +160,107 @@ def _row3(a: Int32, b: Int32, c: Int32) -> List[Int32]:
     w.append(b)
     w.append(c)
     return w^
+
+
+def _clamp_scale(v: Float32) -> Float32:
+    if v < 1.0:
+        return 1.0
+    if v > 1.8:
+        return 1.8
+    return v
+
+
+def _scale_for(win_w: Float32, win_h: Float32) -> Float32:
+    var sx = win_w / _WIN_W
+    var sy = win_h / _WIN_H
+    var s = sx
+    if sy < s:
+        s = sy
+    return _clamp_scale(s)
+
+
+def _px_scale(scale: Float32, value: Int32) -> Int32:
+    return Int32(Float32(Int(value)) * scale + 0.5)
+
+
+def _px(s: InferenceUIState, value: Int32) -> Int32:
+    return _px_scale(s.scale, value)
+
+
+def _fpx(s: InferenceUIState, value: Float32) -> Float32:
+    return value * s.scale
+
+
+def _font_body(s: InferenceUIState) -> Int32:
+    if s.scale >= 1.45:
+        return Int32(24)
+    if s.scale >= 1.15:
+        return Int32(18)
+    return Int32(16)
+
+
+def _left_w(s: InferenceUIState) -> Int32:
+    return _px(s, _LEFT_W)
+
+
+def _right_w(s: InferenceUIState) -> Int32:
+    return _px(s, _RIGHT_W)
+
+
+def _gutter(s: InferenceUIState) -> Int32:
+    return _px(s, _GUTTER)
+
+
+def _center_w(s: InferenceUIState) -> Int32:
+    var w = Int32(s.win_w) - _left_w(s) - _right_w(s) - _gutter(s) * 3
+    if w < _px(s, _CENTER_W):
+        return _px(s, _CENTER_W)
+    return w
+
+
+def _left_label_w(s: InferenceUIState) -> Int32:
+    return _px(s, 110)
+
+
+def _left_field_w(s: InferenceUIState) -> Int32:
+    var w = _left_w(s) - _left_label_w(s) - _px(s, 22)
+    if w < _px(s, 180):
+        return _px(s, 180)
+    return w
+
+
+def _left_full_w(s: InferenceUIState) -> Int32:
+    return _left_label_w(s) + _left_field_w(s)
+
+
+def _right_x(s: InferenceUIState) -> Float32:
+    return Float32(Int(_left_w(s) + _center_w(s) + _gutter(s) * 2))
+
+
+def _initial_window_size() -> Vec2:
+    var display = Backend.display_size()
+    if display.x <= 0.0 or display.y <= 0.0:
+        return Vec2(_WIN_W, _WIN_H)
+    var w = display.x * 0.92
+    var h = display.y * 0.90
+    if w < _WIN_W:
+        w = _WIN_W
+    if h < _WIN_H:
+        h = _WIN_H
+    return Vec2(w, h)
+
+
+def _sync_window_metrics(mut s: InferenceUIState):
+    var win = Backend.window_size()
+    if win.x <= 0.0 or win.y <= 0.0:
+        win = Vec2(_WIN_W, _WIN_H)
+    s.win_w = win.x
+    s.win_h = win.y
+    s.scale = _scale_for(win.x, win.y)
+    s.ctx.theme.font_size_pt = _font_body(s)
+    s.ctx.theme.row_height = _px(s, 26)
+    s.ctx.theme.padding = _px(s, 6)
+    s.ctx.theme.spacing = _px(s, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +296,8 @@ def _draw_preview(
     s: InferenceState,
     font_id: UInt32,
     texture_id: UInt32,
+    ui_scale: Float32,
+    font_size_pt: Int32,
 ):
     """Rounded-rect slot; synthetic gradient when a result is ready, else a
     centered placeholder label."""
@@ -198,15 +308,15 @@ def _draw_preview(
         _draw_synthetic(ctx, rect.copy(), s.history[len(s.history) - 1].color_seed)
     else:
         tess_rounded_rect(
-            ctx, rect.copy(), Float32(8.0), Color(30, 30, 38, 255), 6
+            ctx, rect.copy(), Float32(8.0) * ui_scale, Color(30, 30, 38, 255), 6
         )
         if font_id != 0:
             var msg = String("(generating…)") if s.generating else String("(no image yet)")
             var pos = Vec2(
-                rect.x + rect.w * Float32(0.5) - Float32(54.0),
+                rect.x + rect.w * Float32(0.5) - Float32(54.0) * ui_scale,
                 rect.y + rect.h * Float32(0.5),
             )
-            ctx.draw_text(font_id, Int32(14), pos, Color(140, 145, 160, 255), msg)
+            ctx.draw_text(font_id, font_size_pt, pos, Color(140, 145, 160, 255), msg)
 
 
 # ---------------------------------------------------------------------------
@@ -217,19 +327,19 @@ def _draw_preview(
 def _section_model(mut s: InferenceUIState) raises:
     ref ctx = s.ctx
     if collapsing_header(ctx, String("Model"), s.sec_model):
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Task:"))
         _ = combobox(ctx, String("task"), s.model.task_options,
                      s.model.task_index, s.model.task_open)
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Model:"))
         _ = combobox(ctx, String("model"), s.model.model_options,
                      s.model.model_index, s.model.model_open)
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("VAE:"))
         _ = combobox(ctx, String("vae"), s.model.vae_options,
                      s.model.vae_index, s.model.vae_open)
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Precision:"))
         _ = combobox(ctx, String("precision"), s.model.precision_options,
                      s.model.precision_index, s.model.precision_open)
@@ -238,14 +348,14 @@ def _section_model(mut s: InferenceUIState) raises:
 def _section_resolution(mut s: InferenceUIState) raises:
     ref ctx = s.ctx
     if collapsing_header(ctx, String("Resolution"), s.sec_resolution):
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Preset:"))
         _ = combobox(ctx, String("respreset"), s.model.resolution_options,
                      s.model.resolution_index, s.model.resolution_open)
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Width:"))
         _ = slider(ctx, s.model.width, Float32(256.0), Float32(2048.0), String("width"))
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Height:"))
         _ = slider(ctx, s.model.height, Float32(256.0), Float32(2048.0), String("height"))
 
@@ -253,18 +363,18 @@ def _section_resolution(mut s: InferenceUIState) raises:
 def _section_sampling(mut s: InferenceUIState) raises:
     ref ctx = s.ctx
     if collapsing_header(ctx, String("Sampling"), s.sec_sampling):
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Sampler:"))
         _ = combobox(ctx, String("sampler"), s.model.sampler_options,
                      s.model.sampler_index, s.model.sampler_open)
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Scheduler:"))
         _ = combobox(ctx, String("scheduler"), s.model.scheduler_options,
                      s.model.scheduler_index, s.model.scheduler_open)
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Steps:"))
         _ = slider(ctx, s.model.steps, Float32(1.0), Float32(100.0), String("steps"))
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("CFG:"))
         _ = drag_value(ctx, s.model.cfg, String("cfg"), Float32(0.1))
 
@@ -272,14 +382,14 @@ def _section_sampling(mut s: InferenceUIState) raises:
 def _section_seed(mut s: InferenceUIState) raises:
     ref ctx = s.ctx
     if collapsing_header(ctx, String("Seed"), s.sec_seed):
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Seed:"))
         _ = drag_value(ctx, s.model.seed, String("seed"), Float32(1.0))
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Mode:"))
         _ = combobox(ctx, String("seedmode"), s.model.seed_mode_options,
                      s.model.seed_mode_index, s.model.seed_mode_open)
-        ctx.layout_row(_row1(358), 28)
+        ctx.layout_row(_row1(_left_full_w(s)), _px(s, 28))
         _ = checkbox(ctx, String("Lock seed"), s.model.seed_locked)
 
 
@@ -288,12 +398,12 @@ def _section_lora(mut s: InferenceUIState) raises:
     if collapsing_header(ctx, String("LoRA"), s.sec_lora):
         var n = len(s.model.loras)
         for i in range(n):
-            ctx.layout_row(_row3(140, 168, 50), 26)
+            ctx.layout_row(_row3(_px(s, 140), _px(s, 168), _px(s, 50)), _px(s, 26))
             label(ctx, s.model.loras[i].name)
             _ = slider(ctx, s.model.loras[i].strength, Float32(0.0),
                        Float32(2.0), String("lora_str_") + String(i))
             _ = checkbox(ctx, String(""), s.model.loras[i].active)
-        ctx.layout_row(_row2(180, 178), 28)
+        ctx.layout_row(_row2(_px(s, 180), _left_full_w(s) - _px(s, 180)), _px(s, 28))
         if button(ctx, String("+ Add LoRA")):
             s.model.loras.append(
                 LoraSlot(String("new-lora.safetensors"), Float32(1.0), True)
@@ -309,10 +419,10 @@ def _section_lora(mut s: InferenceUIState) raises:
 def _section_batch(mut s: InferenceUIState) raises:
     ref ctx = s.ctx
     if collapsing_header(ctx, String("Batch"), s.sec_batch):
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Count:"))
         _ = slider(ctx, s.model.batch_count, Float32(1.0), Float32(16.0), String("bcount"))
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Size:"))
         _ = slider(ctx, s.model.batch_size, Float32(1.0), Float32(8.0), String("bsize"))
 
@@ -320,54 +430,43 @@ def _section_batch(mut s: InferenceUIState) raises:
 def _section_advanced(mut s: InferenceUIState) raises:
     ref ctx = s.ctx
     if collapsing_header(ctx, String("Advanced"), s.sec_advanced):
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Clip skip:"))
         _ = drag_value(ctx, s.model.clip_skip, String("clipskip"), Float32(1.0))
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Eta:"))
         _ = drag_value(ctx, s.model.eta, String("eta"), Float32(0.05))
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Sigma min:"))
         _ = drag_value(ctx, s.model.sigma_min, String("sigmin"), Float32(0.01))
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Sigma max:"))
         _ = drag_value(ctx, s.model.sigma_max, String("sigmax"), Float32(0.1))
-        ctx.layout_row(_row1(358), 28)
+        ctx.layout_row(_row1(_left_full_w(s)), _px(s, 28))
         _ = checkbox(ctx, String("Restart sampling"), s.model.restart_sampling)
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("Attention:"))
         _ = combobox(ctx, String("attn"), s.model.attention_options,
                      s.model.attention_index, s.model.attention_open)
-        ctx.layout_row(_row2(110, 248), 28)
+        ctx.layout_row(_row2(_left_label_w(s), _left_field_w(s)), _px(s, 28))
         label(ctx, String("CPU offload:"))
         _ = combobox(ctx, String("offload"), s.model.cpu_offload_options,
                      s.model.cpu_offload_index, s.model.cpu_offload_open)
 
 
 # ---------------------------------------------------------------------------
-# UI composition for the three regions. We lay out left/center/right as three
-# top-level rows whose contents we offset by absolute x via the layout cell
-# width split — MojoUI's layout is single-column-of-rows, so we emulate three
-# columns by giving each section row a leading spacer cell. Simpler approach
-# used here: the params panel uses the full window width but is visually scoped
-# to the left by clipping the column backgrounds; widgets are placed with the
-# multi-cell rows above. To keep it robust we render the three regions in
-# sequence using begin/explicit y via separate layout passes is overkill —
-# instead we paint column backgrounds and place each column's rows by setting
-# a column-local layout row that starts at the column's x.
-#
-# MojoUI layout_row lays cells left-to-right starting at the panel origin (0).
-# To place a column at x = X we prepend a spacer cell of width X (an empty
-# label). This keeps everything within the existing single-column layout model.
+# UI composition for the three regions. Each pane gets an explicit layout panel
+# so its rows start at the pane's own origin instead of being offset with dummy
+# spacer cells inside a single root flow.
 # ---------------------------------------------------------------------------
 
 
 def _left_panel(mut s: InferenceUIState) raises:
     ref ctx = s.ctx
     # Column header
-    ctx.layout_row(_row1(_LEFT_W), 30)
+    ctx.layout_row(_row1(_left_w(s)), _px(s, 30))
     label(ctx, String("Parameters"))
-    ctx.layout_row(_row1(_LEFT_W), 4)
+    ctx.layout_row(_row1(_left_w(s)), _px(s, 4))
     separator(ctx)
     _section_model(s)
     _section_resolution(s)
@@ -381,29 +480,24 @@ def _left_panel(mut s: InferenceUIState) raises:
 def _center_panel(mut s: InferenceUIState, col_x: Float32) raises:
     ref ctx = s.ctx
     # task/mode header
-    ctx.layout_row(_row2(_GUTTER, _CENTER_W), 30)
-    label(ctx, String(""))  # spacer to push to center column
+    ctx.layout_row(_row1(_center_w(s)), _px(s, 30))
     label(ctx, String("Image  ·  ") + s.model.task_short()
           + String("  ·  ") + s.model.model_label())
 
-    ctx.layout_row(_row2(_GUTTER, _CENTER_W), 24)
-    label(ctx, String(""))
+    ctx.layout_row(_row1(_center_w(s)), _px(s, 24))
     label(ctx, String("Prompt:"))
-    ctx.layout_row(_row2(_GUTTER, _CENTER_W), 80)
-    label(ctx, String(""))
+    ctx.layout_row(_row1(_center_w(s)), _px(s, 80))
     if text_area(ctx, String("prompt"), s.model.prompt, s.prompt_edit):
         pass
 
-    ctx.layout_row(_row2(_GUTTER, _CENTER_W), 24)
-    label(ctx, String(""))
+    ctx.layout_row(_row1(_center_w(s)), _px(s, 24))
     label(ctx, String("Negative:"))
-    ctx.layout_row(_row2(_GUTTER, _CENTER_W), 56)
-    label(ctx, String(""))
+    ctx.layout_row(_row1(_center_w(s)), _px(s, 56))
     if text_area(ctx, String("negative"), s.model.negative, s.negative_edit):
         pass
 
     # action bar
-    ctx.layout_row(_row3(_GUTTER + 196, 200, 200), 40)
+    ctx.layout_row(_row3(_px(s, 196), _px(s, 200), _px(s, 200)), _px(s, 40))
     label(ctx, String(""))
     if s.model.generating:
         if button(ctx, String("Cancel")):
@@ -416,130 +510,119 @@ def _center_panel(mut s: InferenceUIState, col_x: Float32) raises:
         s.model.seed = Float32(Int(s.pseudo_rng % UInt32(1000000)))
 
     # image preview
-    ctx.layout_row(_row2(_GUTTER, _CENTER_W), 460)
-    label(ctx, String(""))
+    ctx.layout_row(_row1(_center_w(s)), _px(s, 460))
     var slot = ctx.layout_next()
-    var side: Float32 = 440.0
+    var side: Float32 = _fpx(s, 440.0)
+    if side > slot.w - _fpx(s, 20.0):
+        side = slot.w - _fpx(s, 20.0)
+    if side > slot.h - _fpx(s, 20.0):
+        side = slot.h - _fpx(s, 20.0)
     var img = Rect(
         slot.x + (slot.w - side) * Float32(0.5),
-        slot.y + Float32(10.0),
+        slot.y + _fpx(s, 10.0),
         side, side,
     )
-    _draw_preview(ctx, img, s.model, s.font_id, s.zrt.texture_id)
+    _draw_preview(ctx, img, s.model, s.font_id, s.zrt.texture_id, s.scale, _font_body(s))
 
     # progress bar + readout
-    ctx.layout_row(_row2(_GUTTER, _CENTER_W), 18)
-    label(ctx, String(""))
+    ctx.layout_row(_row1(_center_w(s)), _px(s, 18))
     progress_bar(ctx, zimage_progress_fraction(s.model))
     if s.font_id != 0:
         var readout = String("step ") + String(s.model.current_step) \
             + String("/") + String(s.model.total_steps)
-        ctx.draw_text(s.font_id, Int32(14),
-                      Vec2(col_x, _WIN_H - Float32(18.0)),
+        ctx.draw_text(s.font_id, _font_body(s),
+                      Vec2(col_x, s.win_h - _fpx(s, 18.0)),
                       Color(150, 200, 160, 255), readout)
 
 
 def _right_panel(mut s: InferenceUIState, col_x: Float32) raises:
     ref ctx = s.ctx
-    var pad = _LEFT_W + _CENTER_W + _GUTTER * Int32(2)
     # queue / history tab buttons
-    ctx.layout_row(_row3(pad, 170, 170), 30)
-    label(ctx, String(""))
+    ctx.layout_row(_row2(_px(s, 170), _px(s, 170)), _px(s, 30))
     if button(ctx, String("Queue")):
         s.model.queue_tab = 0
     if button(ctx, String("History")):
         s.model.queue_tab = 1
-    ctx.layout_row(_row2(pad, _RIGHT_W), 4)
-    label(ctx, String(""))
+    ctx.layout_row(_row1(_right_w(s)), _px(s, 4))
     separator(ctx)
 
     if s.model.queue_tab == 0:
         if s.model.has_running:
-            ctx.layout_row(_row2(pad, _RIGHT_W), 22)
-            label(ctx, String(""))
+            ctx.layout_row(_row1(_right_w(s)), _px(s, 22))
             label(ctx, String("▶ running #") + String(s.model.running.id))
-            ctx.layout_row(_row2(pad, _RIGHT_W), 16)
-            label(ctx, String(""))
+            ctx.layout_row(_row1(_right_w(s)), _px(s, 16))
             progress_bar(ctx, s.model.running.progress())
         var nq = len(s.model.queued)
         for i in range(nq):
-            ctx.layout_row(_row2(pad, _RIGHT_W), 22)
-            label(ctx, String(""))
+            ctx.layout_row(_row1(_right_w(s)), _px(s, 22))
             label(ctx, String("· queued #") + String(s.model.queued[i].id)
                   + String("  ") + String(Int(s.model.queued[i].width))
                   + String("x") + String(Int(s.model.queued[i].height)))
         if (not s.model.has_running) and nq == 0:
-            ctx.layout_row(_row2(pad, _RIGHT_W), 22)
-            label(ctx, String(""))
+            ctx.layout_row(_row1(_right_w(s)), _px(s, 22))
             label(ctx, String("(queue empty)"))
     else:
         var nh = len(s.model.history)
         if nh == 0:
-            ctx.layout_row(_row2(pad, _RIGHT_W), 22)
-            label(ctx, String(""))
+            ctx.layout_row(_row1(_right_w(s)), _px(s, 22))
             label(ctx, String("(no history)"))
         for i in range(nh):
             var idx = nh - 1 - i  # newest first
-            ctx.layout_row(_row2(pad, _RIGHT_W), 22)
-            label(ctx, String(""))
+            ctx.layout_row(_row1(_right_w(s)), _px(s, 22))
             label(ctx, String("✓ #") + String(s.model.history[idx].id)
                   + String("  seed ") + String(s.model.history[idx].seed))
 
     # perf footer drawn as absolute text at the bottom of the right column
     if s.font_id != 0:
-        var y = _WIN_H - Float32(86.0)
-        ctx.draw_text(s.font_id, Int32(14), Vec2(col_x, y),
+        var y = s.win_h - _fpx(s, 86.0)
+        ctx.draw_text(s.font_id, _font_body(s), Vec2(col_x, y),
                       Color(170, 175, 190, 255), s.model.perf.gpu_name)
-        ctx.draw_text(s.font_id, Int32(14), Vec2(col_x, y + Float32(20.0)),
+        ctx.draw_text(s.font_id, _font_body(s), Vec2(col_x, y + _fpx(s, 20.0)),
                       Color(170, 175, 190, 255),
                       String("VRAM ") + String(Int(s.model.perf.vram_used_gb))
                       + String("/") + String(Int(s.model.perf.vram_total_gb)) + String(" GB"))
-        ctx.draw_text(s.font_id, Int32(14), Vec2(col_x, y + Float32(40.0)),
+        ctx.draw_text(s.font_id, _font_body(s), Vec2(col_x, y + _fpx(s, 40.0)),
                       Color(170, 175, 190, 255),
                       String("Util ") + String(Int(s.model.perf.gpu_util_pct)) + String("%"))
-        ctx.draw_text(s.font_id, Int32(14), Vec2(col_x, y + Float32(60.0)),
+        ctx.draw_text(s.font_id, _font_body(s), Vec2(col_x, y + _fpx(s, 60.0)),
                       Color(170, 175, 190, 255),
                       String("Temp ") + String(Int(s.model.perf.temperature_c)) + String("C"))
 
 
 def _draw_backgrounds(mut s: InferenceUIState):
     ref ctx = s.ctx
-    var right_x = Float32(Int(_LEFT_W + _CENTER_W + _GUTTER * Int32(2)))
-    ctx.draw_rect(Rect(0.0, 0.0, _WIN_W, _WIN_H), Color(22, 22, 28, 255))
-    ctx.draw_rect(Rect(0.0, 0.0, Float32(Int(_LEFT_W)) + 8.0, _WIN_H),
+    var right_x = _right_x(s)
+    ctx.draw_rect(Rect(0.0, 0.0, s.win_w, s.win_h), Color(22, 22, 28, 255))
+    ctx.draw_rect(Rect(0.0, 0.0, Float32(Int(_left_w(s))) + _fpx(s, 8.0), s.win_h),
                   Color(28, 28, 36, 255))
-    ctx.draw_rect(Rect(right_x, 0.0, Float32(Int(_RIGHT_W)) + 16.0, _WIN_H),
+    ctx.draw_rect(Rect(right_x, 0.0, Float32(Int(_right_w(s))) + _fpx(s, 16.0), s.win_h),
                   Color(28, 28, 36, 255))
 
 
 def _ui(mut s: InferenceUIState) raises:
     _draw_backgrounds(s)
-    var right_x = Float32(Int(_LEFT_W + _CENTER_W + _GUTTER * Int32(2)))
+    var left_w = Float32(Int(_left_w(s)))
+    var center_x = left_w + _fpx(s, 16.0)
+    var center_w = Float32(Int(_center_w(s)))
+    var right_x = _right_x(s)
 
-    # Three regions composed as sequential row groups. Because MojoUI layout is
-    # a single column of rows, each region's rows carry leading spacer cells to
-    # offset them horizontally; the layout y is reset per region by replaying
-    # from the top using a fresh layout_row call group. To stack them visually
-    # we render left, then re-seed y for center+right via absolute text +
-    # spacer-prefixed rows. For a clean MVP we render the LEFT panel first
-    # (its own rows), then CENTER and RIGHT which use spacer-prefixed rows so
-    # they appear in their columns even though the layout y keeps advancing.
-    #
-    # Simpler + robust: render all three top-to-bottom but the center/right
-    # rows are prefixed with a wide spacer so their widgets land in the right
-    # column. They share the running layout y, so we reset y between regions by
-    # NOT resetting (acceptable: each region's content is short enough). To
-    # avoid overlap we render LEFT fully, then CENTER fully below it, then
-    # RIGHT below that — visually stacked but each in its own x-column.
+    s.ctx.begin_panel(Rect(0.0, 0.0, left_w, s.win_h))
     _left_panel(s)
-    _center_panel(s, Float32(Int(_LEFT_W)) + 24.0)
-    _right_panel(s, right_x + 12.0)
+    s.ctx.end_panel()
+
+    s.ctx.begin_panel(Rect(center_x, 0.0, center_w, s.win_h))
+    _center_panel(s, center_x + _fpx(s, 8.0))
+    s.ctx.end_panel()
+
+    s.ctx.begin_panel(Rect(right_x, 0.0, Float32(Int(_right_w(s))), s.win_h))
+    _right_panel(s, right_x + _fpx(s, 12.0))
+    s.ctx.end_panel()
 
 
 def _dispatch_triangles(mut cmd: CmdTriangles):
     var verts = cmd.take_verts()
     var indices = cmd.take_indices()
-    Backend.draw_batch_lists(verts^, indices^, cmd.texture_id)
+    _ = Backend.draw_batch_lists(verts^, indices^, cmd.texture_id)
 
 
 def _sync_result_texture(mut s: InferenceUIState):
@@ -565,37 +648,8 @@ def _sync_result_texture(mut s: InferenceUIState):
 
 
 def _render_command_buffer(mut ctx: Context) raises:
-    var off: Int32 = 0
-    var end_off = Int32(ctx.commands.byte_count())
-    while off < end_off:
-        var kind = ctx.commands.kind_at(off)
-        if kind == CMD_JUMP:
-            var prev_off = off
-            off = ctx.commands.read_jump_dst(off)
-            if off <= prev_off:
-                return
-            continue
-        var size = ctx.commands.size_at(off)
-        if kind == CMD_RECT:
-            var cmd = read_cmd_rect(ctx.commands, off)
-            Backend.draw_rect(cmd.rect.copy(), cmd.color.copy())
-        elif kind == CMD_TEXT:
-            var cmd = read_cmd_text(ctx.commands, off)
-            _ = Backend.draw_text(
-                cmd.font_id, cmd.size_pt, cmd.text,
-                cmd.pos.copy(), cmd.color.copy(),
-            )
-        elif kind == CMD_IMAGE:
-            var cmd = read_cmd_image(ctx.commands, off)
-            Backend.draw_image_rect(
-                cmd.rect.copy(),
-                cmd.texture_id,
-                cmd.tint.copy(),
-            )
-        elif kind == CMD_TRIANGLES:
-            var cmd = read_cmd_triangles(ctx.commands, off)
-            _dispatch_triangles(cmd)
-        off = off + size
+    """Render through the shared live command-buffer adapter."""
+    _ = render_context_commands(ctx, String("MojoUI m8"))
 
 
 def _frame() -> None:
@@ -603,21 +657,14 @@ def _frame() -> None:
     if sp[].font_id == 0:
         sp[].font_id = Backend.load_font(String(""))
         sp[].ctx.theme.font_id = sp[].font_id
-        # MUST be a pre-baked atlas size — the C floor only bakes
-        # {12,14,16,18,24} (issue #73). 15 has no atlas, so all widget text
-        # (which uses theme.font_size_pt) silently renders nothing while
-        # manual 14pt draws still show. Use 16.
-        sp[].ctx.theme.font_size_pt = Int32(16)
-        sp[].ctx.theme.row_height = Int32(26)
-        sp[].ctx.theme.padding = Int32(6)
-        sp[].ctx.theme.spacing = Int32(5)
+    _sync_window_metrics(sp[])
 
     # Advance the UI worker one frame BEFORE building the UI so progress and
     # completed-result textures are current this frame.
     zimage_tick_and_apply(sp[].model, sp[].zrt)
     _sync_result_texture(sp[])
 
-    sp[].ctx.begin_frame(Vec2(_WIN_W, _WIN_H))
+    sp[].ctx.begin_frame(Vec2(sp[].win_w, sp[].win_h))
     Backend.frame_begin(Color(18, 18, 22, 255))
     try:
         _ui(sp[])
@@ -660,15 +707,25 @@ def main() raises:
     var sp = UnsafePointer(to=state)
     store_user_state(sp)
 
+    var initial_size = _initial_window_size()
+    state.win_w = initial_size.x
+    state.win_h = initial_size.y
+    state.scale = _scale_for(initial_size.x, initial_size.y)
+
     var rc = Backend.init(
-        Int32(Int(_WIN_W)), Int32(Int(_WIN_H)),
+        Int32(Int(initial_size.x)), Int32(Int(initial_size.y)),
         String("MojoUI m8 — Inference"),
     )
     if rc != 0:
         print("FAIL: Backend.init returned", rc)
         raise Error("init failed")
 
-    print("Opening inference UI (Z-Image bridge; real_backend=", backend_is_real(), "). Click Generate to run.")
+    print(
+        "Opening inference UI (Z-Image bridge; real_backend=", backend_is_real(),
+        ", scale=", state.scale,
+        ", window=", Int(state.win_w), "x", Int(state.win_h),
+        "). Click Generate to run."
+    )
     Backend.run_blocking(_frame)
     # Keep-alive: reference state AFTER run_blocking so ASAP destruction does
     # not free the struct (and the callback's pointer) early.

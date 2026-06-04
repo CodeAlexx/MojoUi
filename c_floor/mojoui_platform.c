@@ -18,6 +18,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#if defined(__linux__)
+#include <X11/Xlib.h>
+#endif
 
 /* Build flags from the Makefile: -DSOKOL_GLCORE -DSOKOL_NO_ENTRY.
  * sokol_gfx and stb_truetype live in their own TUs (chunks 4, 5). */
@@ -32,6 +35,7 @@
 
 /* --- Internal state ----------------------------------------------------- */
 #define MOJOUI_INPUT_TEXT_CAP 256
+#define MOJOUI_WINDOW_TITLE_CAP 256
 
 static sapp_desc g_desc;
 static void (*g_frame_fn)(void) = NULL;
@@ -53,6 +57,7 @@ static int  g_mouse_buttons[3] = {0, 0, 0};   /* LEFT, RIGHT, MIDDLE */
 static unsigned char g_keys[MOJOUI_KEY_COUNT];
 static char g_input_text_buf[MOJOUI_INPUT_TEXT_CAP];
 static int  g_input_text_len = 0;
+static char g_window_title_buf[MOJOUI_WINDOW_TITLE_CAP];
 
 /* --- sokol keycode -> MOJOUI_KEY_* ------------------------------------- */
 static int translate_keycode(sapp_keycode k) {
@@ -129,7 +134,12 @@ static void platform_frame_cb(void) {
     g_window_width = sapp_width(); g_window_height = sapp_height();
     if (g_frame_fn) g_frame_fn();
 }
-static void platform_cleanup_cb(void) { g_frame_fn = NULL; }
+static void platform_cleanup_cb(void) {
+    mojoui_destroy_all_fonts();
+    mojoui_render_shutdown();
+    g_frame_fn = NULL;
+    g_user_data = NULL;
+}
 
 static void platform_event_cb(const sapp_event* ev) {
     switch (ev->type) {
@@ -167,8 +177,22 @@ static void platform_event_cb(const sapp_event* ev) {
     }
 }
 
+static const char* copy_window_title(const char* title, int title_len) {
+    if (title == NULL || title_len <= 0) {
+        memcpy(g_window_title_buf, "MojoUI", 7);
+        return g_window_title_buf;
+    }
+    int n = title_len;
+    if (n >= MOJOUI_WINDOW_TITLE_CAP) {
+        n = MOJOUI_WINDOW_TITLE_CAP - 1;
+    }
+    memcpy(g_window_title_buf, title, (size_t)n);
+    g_window_title_buf[n] = '\0';
+    return g_window_title_buf;
+}
+
 /* --- Public ABI implementation ----------------------------------------- */
-int mojoui_init_window(int width, int height, const char* title) {
+int mojoui_init_window_len(int width, int height, const char* title, int title_len) {
     memset(&g_desc, 0, sizeof(g_desc));
     g_desc.init_cb      = platform_init_cb;
     g_desc.frame_cb     = platform_frame_cb;
@@ -176,7 +200,7 @@ int mojoui_init_window(int width, int height, const char* title) {
     g_desc.event_cb     = platform_event_cb;
     g_desc.width        = width  > 0 ? width  : 800;
     g_desc.height       = height > 0 ? height : 600;
-    g_desc.window_title = title ? title : "MojoUI";
+    g_desc.window_title = copy_window_title(title, title_len);
     /* high_dpi=true caused widgets-tiny + clicks-miss on 4K — sapp_width()
      * returns framebuffer pixels (huge) but mouse_x comes in scaled pixels,
      * so widget rects and click hit-tests live in different coordinate
@@ -197,10 +221,16 @@ int mojoui_init_window(int width, int height, const char* title) {
     return 0;
 }
 
+int mojoui_init_window(int width, int height, const char* title) {
+    int title_len = title ? (int)strlen(title) : 0;
+    return mojoui_init_window_len(width, height, title, title_len);
+}
+
 void mojoui_run_blocking(void (*frame_fn)(void)) {
     g_frame_fn = frame_fn;
     sapp_run(&g_desc);
     g_frame_fn = NULL;
+    g_user_data = NULL;
 }
 
 void mojoui_request_close(void) {
@@ -212,6 +242,33 @@ int  mojoui_should_close(void)      { return g_should_close;  }
 void mojoui_poll_events(void)       { /* sokol pumps inside sapp_run */ }
 int  mojoui_get_window_width(void)  { return g_window_width;  }
 int  mojoui_get_window_height(void) { return g_window_height; }
+
+static int query_x11_display_dim(int want_width) {
+#if defined(__linux__)
+    Display* dpy = XOpenDisplay(NULL);
+    if (dpy == NULL) {
+        return 0;
+    }
+    int screen = DefaultScreen(dpy);
+    int value = want_width ? DisplayWidth(dpy, screen) : DisplayHeight(dpy, screen);
+    XCloseDisplay(dpy);
+    return value;
+#else
+    (void)want_width;
+    return 0;
+#endif
+}
+
+int mojoui_get_display_width(void) {
+    int w = query_x11_display_dim(1);
+    return w > 0 ? w : g_window_width;
+}
+
+int mojoui_get_display_height(void) {
+    int h = query_x11_display_dim(0);
+    return h > 0 ? h : g_window_height;
+}
+
 int  mojoui_get_mouse_x(void)       { return g_mouse_x; }
 int  mojoui_get_mouse_y(void)       { return g_mouse_y; }
 

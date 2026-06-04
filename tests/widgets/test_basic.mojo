@@ -18,6 +18,7 @@ from mojoui.core.types import Vec2, Rect, Color
 from mojoui.core.id import ImmediateId, IMM_ID_NONE, hash_str
 from mojoui.core.context import Context
 from mojoui.core.control import CTRL_HOVERED, CTRL_FOCUSED, CTRL_ACTIVE
+from mojoui.core.commands import CMD_TEXT, read_cmd_text
 from mojoui.widgets.basic import button, label, separator
 
 
@@ -208,6 +209,32 @@ def test_hover_only_no_click() raises:
         _fail("hover-only should NOT claim active")
 
 
+def test_bright_button_uses_dark_label_text() raises:
+    """Test 9: bright primary fills must not draw unreadable white labels."""
+    var ctx = Context()
+    _make_ctx(ctx, Vec2(500.0, 500.0), False, False)
+    ctx.theme.primary = Color(248, 255, 127, 255)
+    var _ = button(ctx, String("Generate"))
+    var off: Int32 = 0
+    var found = False
+    var total = Int32(ctx.commands.byte_count())
+    while off < total:
+        if Int32(ctx.commands.kind_at(off)) == Int32(CMD_TEXT):
+            var cmd = read_cmd_text(ctx.commands, off)
+            if cmd.text == String("Generate"):
+                found = True
+                var yiq = Int(cmd.color.r) * 299 + Int(cmd.color.g) * 587 \
+                    + Int(cmd.color.b) * 114
+                if yiq >= 80000:
+                    _fail("bright button label text should be dark")
+        var step = ctx.commands.size_at(off)
+        if step <= 0:
+            _fail("command buffer walk saw non-positive command size")
+        off = off + step
+    if not found:
+        _fail("button should emit Generate text command")
+
+
 def main() raises:
     test_button_reserves_slot_and_emits_commands()
     test_button_returns_false_when_no_mouse_interaction()
@@ -217,4 +244,5 @@ def main() raises:
     test_label_emits_command_but_no_interaction()
     test_separator_emits_command_and_advances_layout()
     test_hover_only_no_click()
-    print("PASS: basic widget smoke tests (8 tests)")
+    test_bright_button_uses_dark_label_text()
+    print("PASS: basic widget smoke tests (9 tests)")

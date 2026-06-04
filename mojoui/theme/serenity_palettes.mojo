@@ -29,6 +29,13 @@ def _f(r: Float32, g: Float32, b: Float32, a: Float32) -> Color:
     )
 
 
+def _readable_text_on_fill(fill: Color) -> Color:
+    var yiq = Int(fill.r) * 299 + Int(fill.g) * 587 + Int(fill.b) * 114
+    if yiq >= 150000:
+        return Color(20, 20, 24, 255)
+    return Color(245, 245, 250, 255)
+
+
 def _theme_from_dpg_palette(
     name: String,
     window_bg: Color,
@@ -72,7 +79,7 @@ def _theme_from_dpg_palette(
     c.text_default = text.copy()
     c.text_subdued = text_disabled.copy()
     c.text_disabled = text_disabled.with_alpha(UInt8(160))
-    c.text_on_accent = Color(255, 255, 255, 255)
+    c.text_on_accent = _readable_text_on_fill(slider_grab.copy())
     c.text_strong = text.copy()
 
     c.widget_inactive_bg_fill = frame_bg.copy()
@@ -94,13 +101,13 @@ def _theme_from_dpg_palette(
     c.focus_outline_stroke = slider_grab_active.copy()
 
     c.alert_info_fill = header.copy()
-    c.alert_info_text = text.copy()
+    c.alert_info_text = _readable_text_on_fill(header.copy())
     c.alert_warning_fill = plot_histogram.copy()
-    c.alert_warning_text = text.copy()
+    c.alert_warning_text = _readable_text_on_fill(plot_histogram.copy())
     c.alert_error_fill = Color(210, 55, 65, 255)
-    c.alert_error_text = Color(255, 240, 240, 255)
+    c.alert_error_text = _readable_text_on_fill(c.alert_error_fill.copy())
     c.alert_success_fill = Color(30, 160, 95, 255)
-    c.alert_success_text = Color(230, 255, 240, 255)
+    c.alert_success_text = _readable_text_on_fill(c.alert_success_fill.copy())
 
     c.graph_canvas_bg = plot_bg.copy()
     c.graph_node_bg = child_bg.with_alpha(UInt8(240))

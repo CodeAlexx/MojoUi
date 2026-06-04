@@ -13,6 +13,7 @@ from mojoui.core.commands import (
     CmdTriangles, read_cmd_rect, read_cmd_text, read_cmd_triangles,
 )
 from mojoui.render.backend import Backend
+from mojoui.render.command_renderer import render_context_commands
 from mojoui.widgets.basic import button, label, separator
 from mojoui.widgets.combobox import combobox
 from mojoui.widgets.slider import slider
@@ -148,6 +149,19 @@ def _scale_for(win_w: Float32, win_h: Float32) -> Float32:
     if sy < s:
         s = sy
     return _clamp_scale(s)
+
+
+def _initial_window_size() -> Vec2:
+    var display = Backend.display_size()
+    if display.x <= 0.0 or display.y <= 0.0:
+        return Vec2(_INIT_W, _INIT_H)
+    var w = display.x * 0.92
+    var h = display.y * 0.90
+    if w < _INIT_W:
+        w = _INIT_W
+    if h < _INIT_H:
+        h = _INIT_H
+    return Vec2(w, h)
 
 
 def _px_scale(scale: Float32, value: Int32) -> Int32:
@@ -859,34 +873,12 @@ def _ui(mut s: TrainerAppState) raises:
 def _dispatch_triangles(mut cmd: CmdTriangles):
     var verts = cmd.take_verts()
     var indices = cmd.take_indices()
-    Backend.draw_batch_lists(verts^, indices^, cmd.texture_id)
+    _ = Backend.draw_batch_lists(verts^, indices^, cmd.texture_id)
 
 
 def _render_command_buffer(mut ctx: Context) raises:
-    var off: Int32 = 0
-    var end_off = Int32(ctx.commands.byte_count())
-    while off < end_off:
-        var kind = ctx.commands.kind_at(off)
-        if kind == CMD_JUMP:
-            var prev_off = off
-            off = ctx.commands.read_jump_dst(off)
-            if off <= prev_off:
-                return
-            continue
-        var size = ctx.commands.size_at(off)
-        if kind == CMD_RECT:
-            var cmd = read_cmd_rect(ctx.commands, off)
-            Backend.draw_rect(cmd.rect.copy(), cmd.color.copy())
-        elif kind == CMD_TEXT:
-            var cmd = read_cmd_text(ctx.commands, off)
-            _ = Backend.draw_text(
-                cmd.font_id, cmd.size_pt, cmd.text,
-                cmd.pos.copy(), cmd.color.copy(),
-            )
-        elif kind == CMD_TRIANGLES:
-            var cmd = read_cmd_triangles(ctx.commands, off)
-            _dispatch_triangles(cmd)
-        off = off + size
+    """Render through the shared live command-buffer adapter."""
+    _ = render_context_commands(ctx, String("MojoUI m9"))
 
 
 def _frame() -> None:
@@ -918,7 +910,12 @@ def main() raises:
     var sp = UnsafePointer(to=state)
     store_user_state(sp)
 
-    var rc = Backend.init(Int32(Int(_INIT_W)), Int32(Int(_INIT_H)), String("MojoUI m9 — Trainer"))
+    var initial_size = _initial_window_size()
+    var rc = Backend.init(
+        Int32(Int(initial_size.x)),
+        Int32(Int(initial_size.y)),
+        String("MojoUI m9 — Trainer"),
+    )
     if rc != 0:
         print("FAIL: Backend.init returned", rc)
         raise Error("init failed")

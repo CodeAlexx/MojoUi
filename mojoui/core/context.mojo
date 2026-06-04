@@ -444,6 +444,18 @@ struct Context(Movable):
         `LayoutStack.end_column`."""
         self.layout.end_column()
 
+    def begin_panel(mut self, rect: Rect):
+        """Push an explicit absolute layout panel.
+
+        Unlike `begin_column`, this does not consume a slot from the parent
+        flow. Use it for app-level panes whose x/y/w/h are computed directly.
+        """
+        self.layout.push(rect)
+
+    def end_panel(mut self):
+        """Pop a panel previously pushed with `begin_panel`."""
+        self.layout.pop()
+
     # ---- Control shortcut ----
 
     def update_control(mut self, id: ImmediateId, rect: Rect, opts: Int32) -> Int32:
@@ -517,3 +529,7 @@ struct Context(Movable):
             _ = self.popup_commands.emit_clip(rect)
         else:
             _ = self.commands.emit_clip(rect)
+
+    def reset_clip(mut self):
+        """Restore clipping to the full current window rect."""
+        self.draw_clip(self.window_rect.copy())

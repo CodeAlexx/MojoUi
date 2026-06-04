@@ -10,12 +10,17 @@ from mojoui.theme.serenity_palettes import (
     serenity_theme_for_name,
     serenity_theme_at,
 )
+from mojoui.core.types import Color
 
 
 def _expect(cond: Bool, msg: String) raises:
     if not cond:
         print("FAIL:", msg)
         raise Error(msg)
+
+
+def _yiq(c: Color) -> Int:
+    return Int(c.r) * 299 + Int(c.g) * 587 + Int(c.b) * 114
 
 
 def test_palette_names() raises:
@@ -44,6 +49,17 @@ def test_theme_mapping() raises:
     print("PASS: theme mapping")
 
 
+def test_bright_accent_text_is_readable() raises:
+    var m = serenity_theme_for_name(String("Moonlight"))
+    _expect(_yiq(m.colors.accent_default.copy()) >= 150000,
+            "moonlight accent should exercise bright-fill contrast")
+    _expect(_yiq(m.colors.text_on_accent.copy()) < 80000,
+            "moonlight text_on_accent must be dark on yellow")
+    _expect(_yiq(m.colors.alert_warning_text.copy()) < 80000,
+            "moonlight warning text must be dark on yellow")
+    print("PASS: bright accent contrast")
+
+
 def test_theme_at_and_unknown() raises:
     var b = serenity_theme_at(6)
     var fallback = serenity_theme_for_name(String("unknown"))
@@ -56,5 +72,6 @@ def test_theme_at_and_unknown() raises:
 def main() raises:
     test_palette_names()
     test_theme_mapping()
+    test_bright_accent_text_is_readable()
     test_theme_at_and_unknown()
-    print("PASS: serenity palette tests (3 tests)")
+    print("PASS: serenity palette tests (4 tests)")

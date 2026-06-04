@@ -21,6 +21,7 @@ from mojoui.core.commands import (
     read_cmd_rect, read_cmd_text, read_cmd_triangles,
 )
 from mojoui.render.backend import Backend
+from mojoui.render.command_renderer import render_context_commands
 from mojoui.theme.tokens import Theme
 from mojoui.theme.themes import dark_theme, light_theme, high_contrast_theme
 from mojoui.widgets.basic import button, label, separator
@@ -141,37 +142,12 @@ def _row4(a: Int32, b: Int32, c: Int32, d: Int32) -> List[Int32]:
 def _dispatch_triangles(mut cmd: CmdTriangles):
     var verts = cmd.take_verts()
     var indices = cmd.take_indices()
-    Backend.draw_batch_lists(verts^, indices^, cmd.texture_id)
+    _ = Backend.draw_batch_lists(verts^, indices^, cmd.texture_id)
 
 
 def _render_command_buffer(mut ctx: Context) raises:
-    """Walks ctx.commands; dispatches RECT/TEXT/TRIANGLES to Backend.
-    CMD_CLIP / CMD_ICON / CMD_IMAGE skipped (no live backend path)."""
-    var off: Int32 = 0
-    var end_off = Int32(ctx.commands.byte_count())
-    while off < end_off:
-        var kind = ctx.commands.kind_at(off)
-        if kind == CMD_JUMP:
-            var prev_off = off
-            off = ctx.commands.read_jump_dst(off)
-            if off <= prev_off:
-                print("MojoUI m4: non-forward JUMP at", Int(prev_off))
-                return
-            continue
-        var size = ctx.commands.size_at(off)
-        if kind == CMD_RECT:
-            var cmd = read_cmd_rect(ctx.commands, off)
-            Backend.draw_rect(cmd.rect.copy(), cmd.color.copy())
-        elif kind == CMD_TEXT:
-            var cmd = read_cmd_text(ctx.commands, off)
-            _ = Backend.draw_text(
-                cmd.font_id, cmd.size_pt, cmd.text,
-                cmd.pos.copy(), cmd.color.copy(),
-            )
-        elif kind == CMD_TRIANGLES:
-            var cmd = read_cmd_triangles(ctx.commands, off)
-            _dispatch_triangles(cmd)
-        off = off + size
+    """Render through the shared live command-buffer adapter."""
+    _ = render_context_commands(ctx, String("MojoUI m4"))
 
 
 def _frame() -> None:

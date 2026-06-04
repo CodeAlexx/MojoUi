@@ -37,6 +37,8 @@ from mojoui.render.ffi import (
     should_close as _ffi_should_close,
     get_window_width as _ffi_get_window_width,
     get_window_height as _ffi_get_window_height,
+    get_display_width as _ffi_get_display_width,
+    get_display_height as _ffi_get_display_height,
     get_mouse_x as _ffi_get_mouse_x,
     get_mouse_y as _ffi_get_mouse_y,
     get_mouse_button as _ffi_get_mouse_button,
@@ -49,10 +51,15 @@ from mojoui.render.ffi import (
     frame_begin as _ffi_frame_begin,
     frame_end as _ffi_frame_end,
     draw_batch as _ffi_draw_batch,
+    set_clip_rect as _ffi_set_clip_rect,
+    reset_clip_rect as _ffi_reset_clip_rect,
+    max_batch_verts as _ffi_max_batch_verts,
+    max_batch_indices as _ffi_max_batch_indices,
     make_texture as _ffi_make_texture,
     destroy_texture as _ffi_destroy_texture,
     load_font as _ffi_load_font,
     destroy_font as _ffi_destroy_font,
+    destroy_all_fonts as _ffi_destroy_all_fonts,
     text_width as _ffi_text_width,
     text_height as _ffi_text_height,
     draw_text as _ffi_draw_text,
@@ -242,6 +249,7 @@ struct Backend:
     @staticmethod
     def shutdown():
         """Tear sokol_gfx down. The window itself goes away when sapp_run returns."""
+        _ffi_destroy_all_fonts()
         _ffi_render_shutdown()
 
     @staticmethod
@@ -273,6 +281,13 @@ struct Backend:
         var h = _ffi_get_window_height()
         return Vec2(Float32(Int(w)), Float32(Int(h)))
 
+    @staticmethod
+    def display_size() -> Vec2:
+        """Primary display dimensions as a `Vec2` (Float32 pixels)."""
+        var w = _ffi_get_display_width()
+        var h = _ffi_get_display_height()
+        return Vec2(Float32(Int(w)), Float32(Int(h)))
+
     # ----- Frame lifecycle ---------------------------------------------
 
     @staticmethod
@@ -293,6 +308,31 @@ struct Backend:
     def frame_end():
         """End frame: `sg_end_pass` + `sg_commit` (present)."""
         _ffi_frame_end()
+
+    @staticmethod
+    def set_clip(rect: Rect):
+        """Set the current scissor rect. Coordinates are top-left-origin pixels."""
+        _ffi_set_clip_rect(
+            Int32(Int(rect.x)),
+            Int32(Int(rect.y)),
+            Int32(Int(rect.w)),
+            Int32(Int(rect.h)),
+        )
+
+    @staticmethod
+    def reset_clip():
+        """Restore clipping to the full backbuffer."""
+        _ffi_reset_clip_rect()
+
+    @staticmethod
+    def max_batch_verts() -> Int32:
+        """C-floor vertex capacity for one submitted batch."""
+        return _ffi_max_batch_verts()
+
+    @staticmethod
+    def max_batch_indices() -> Int32:
+        """C-floor index capacity for one submitted batch."""
+        return _ffi_max_batch_indices()
 
     # ----- Input queries -----------------------------------------------
 
@@ -358,7 +398,7 @@ struct Backend:
         var verts = InlineArray[Float32, 20](fill=0.0)
         var idx = InlineArray[UInt16, 6](fill=0)
         _tessellate_rect(rect, color, verts, idx)
-        _ffi_draw_batch(
+        _ = _ffi_draw_batch(
             verts.unsafe_ptr(),
             Int32(4),
             idx.unsafe_ptr(),
@@ -400,7 +440,7 @@ struct Backend:
         var verts = InlineArray[Float32, 20](fill=0.0)
         var idx = InlineArray[UInt16, 6](fill=0)
         _tessellate_image_rect(rect, tint, verts, idx)
-        _ffi_draw_batch(
+        _ = _ffi_draw_batch(
             verts.unsafe_ptr(),
             Int32(4),
             idx.unsafe_ptr(),
@@ -413,7 +453,7 @@ struct Backend:
         var verts: List[Float32],
         var indices: List[UInt16],
         texture_id: UInt32,
-    ):
+    ) -> Int32:
         """Submit a variable-size vertex+index batch as a single GPU draw.
 
         Companion to `draw_rect` but for primitives whose vertex/index
@@ -427,8 +467,9 @@ struct Backend:
         the color via `_pack_color_aabbggrr` + `_u32_to_f32_bits`.
 
         Index count must be a multiple of 3 (triangles); vertex count
-        must be `len(verts) // 5`. Both validated by the C floor at
-        the `mojoui_draw_batch` boundary, NOT here.
+        must be `len(verts) // 5`. This wrapper validates those invariants
+        before crossing FFI, and the C floor repeats the validation before
+        touching sokol stream buffers.
 
         `texture_id=0` binds the built-in 1×1 white texture for solid
         colored geometry.
@@ -446,8 +487,19 @@ struct Backend:
         # List is implementation-defined across Mojo betas. Bail before
         # the FFI call to keep behavior portable.
         if n_verts == Int32(0) or n_indices == Int32(0):
-            return
-        _ffi_draw_batch(
+            return Int32(0)
+        if len(verts) % 5 != 0:
+            return Int32(0)
+        if len(indices) % 3 != 0:
+            return Int32(0)
+        if n_verts > _ffi_max_batch_verts():
+            return Int32(0)
+        if n_indices > _ffi_max_batch_indices():
+            return Int32(0)
+        for i in range(len(indices)):
+            if Int(indices[i]) >= Int(n_verts):
+                return Int32(0)
+        return _ffi_draw_batch(
             verts.unsafe_ptr(),
             n_verts,
             indices.unsafe_ptr(),

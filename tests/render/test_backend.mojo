@@ -20,6 +20,8 @@ from mojoui.render.backend import (
     _tessellate_rect,
     _tessellate_image_rect,
 )
+from mojoui.render.command_renderer import render_command_buffer
+from mojoui.core.commands import CommandBuffer
 from mojoui.core.types import Vec2, Rect, Color
 
 
@@ -234,7 +236,12 @@ def test_static_methods_exist():
         Backend.request_close()
         _ = Backend.should_close()
         _ = Backend.window_size()
+        _ = Backend.display_size()
         Backend.frame_begin(Color.black())
+        Backend.set_clip(Rect(0.0, 0.0, 1.0, 1.0))
+        Backend.reset_clip()
+        _ = Backend.max_batch_verts()
+        _ = Backend.max_batch_indices()
         Backend.frame_end()
         var px = List[UInt8]()
         _ = Backend.make_texture_rgba(Int32(1), Int32(1), px)
@@ -265,6 +272,14 @@ def test_input_text_signature() raises:
         var _s = Backend.input_text()
 
 
+def test_command_renderer_signature() raises:
+    """Compile-only proof that the shared command renderer imports and resolves."""
+    var never = False
+    if never:
+        var buf = CommandBuffer()
+        _ = render_command_buffer(buf, String("test"))
+
+
 # ============================================================
 # Entry
 # ============================================================
@@ -283,4 +298,5 @@ def main() raises:
     test_tessellate_image_rect_uvs()
     test_static_methods_exist()
     test_input_text_signature()
+    test_command_renderer_signature()
     print("PASS: backend smoke (color packing + rect tessellation + API surface)")

@@ -31,6 +31,7 @@ from mojoui.core.commands import (
     read_cmd_rect, read_cmd_text, read_cmd_triangles,
 )
 from mojoui.render.backend import Backend
+from mojoui.render.command_renderer import render_context_commands
 from mojoui.theme.tokens import Theme
 from mojoui.theme.themes import dark_theme, light_theme, high_contrast_theme
 from mojoui.theme.typography import load_default_ui_font
@@ -82,54 +83,12 @@ def _dispatch_triangles(mut cmd: CmdTriangles):
     """
     var verts = cmd.take_verts()
     var indices = cmd.take_indices()
-    Backend.draw_batch_lists(verts^, indices^, cmd.texture_id)
+    _ = Backend.draw_batch_lists(verts^, indices^, cmd.texture_id)
 
 
 def _render_command_buffer(mut ctx: Context) raises:
-    """Walk ctx.commands; dispatch CMD_RECT + CMD_TEXT + CMD_TRIANGLES
-    through Backend. Skips CMD_CLIP/ICON/IMAGE (none used here). JUMP
-    follows the c12 z-order contract with the m1_button forward-progress
-    guard.
-
-    CMD_TRIANGLES was added by the M3 c46-fix Bug 2 (2026-05-28): the
-    tessellator used to call Backend.draw_batch_lists directly, bypassing
-    the command buffer; widget geometry would render immediately, then be
-    cleared by Backend.frame_begin before this walker ran. The fix routes
-    tess_* output through `ctx.commands.emit_triangles`; this walker now
-    drains those records into Backend.draw_batch_lists.
-
-    Marked `raises` because `read_cmd_triangles` raises on a kind mismatch
-    (defensive: the walker only calls it after verifying kind == CMD_TRIANGLES).
-    """
-    var off: Int32 = 0
-    var end_off = Int32(ctx.commands.byte_count())
-    while off < end_off:
-        var kind = ctx.commands.kind_at(off)
-        if kind == CMD_JUMP:
-            var prev_off = off
-            off = ctx.commands.read_jump_dst(off)
-            if off <= prev_off:
-                print("MojoUI c53: non-forward JUMP at", Int(prev_off))
-                return
-            continue
-        var size = ctx.commands.size_at(off)
-        if kind == CMD_RECT:
-            var cmd = read_cmd_rect(ctx.commands, off)
-            Backend.draw_rect(cmd.rect.copy(), cmd.color.copy())
-        elif kind == CMD_TEXT:
-            var cmd = read_cmd_text(ctx.commands, off)
-            # Backend.draw_text signature is (font_id, size_pt, text,
-            # baseline_left, color) — different from ctx.draw_text which is
-            # (font_id, size_pt, pos, color, text). The Context API emits
-            # into the command buffer; the Backend API draws to the GPU.
-            _ = Backend.draw_text(
-                cmd.font_id, cmd.size_pt, cmd.text,
-                cmd.pos.copy(), cmd.color.copy(),
-            )
-        elif kind == CMD_TRIANGLES:
-            var cmd = read_cmd_triangles(ctx.commands, off)
-            _dispatch_triangles(cmd)
-        off = off + size
+    """Render through the shared live command-buffer adapter."""
+    _ = render_context_commands(ctx, String("MojoUI m3"))
 
 
 def _frame() -> None:

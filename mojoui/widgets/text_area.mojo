@@ -340,6 +340,8 @@ def text_area(
                 ctx.theme.primary.copy(),
             )
 
+    ctx.reset_clip()
+
     # ---- Sync buffer + detect change ----
     var changed = buffer != before
     if (flags & CTRL_FOCUSED) != 0 or changed:

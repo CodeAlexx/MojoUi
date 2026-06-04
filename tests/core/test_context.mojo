@@ -27,7 +27,7 @@ from mojoui.core.id import (
     derive_id,
     FNV1A_OFFSET_32,
 )
-from mojoui.core.commands import CommandBuffer, CMD_RECT, CMD_TEXT
+from mojoui.core.commands import CommandBuffer, CMD_RECT, CMD_TEXT, CMD_CLIP, read_cmd_clip
 from mojoui.core.control import (
     ControlState,
     CTRL_HOVERED,
@@ -263,6 +263,22 @@ def test_set_theme_replaces_wholesale() raises:
         _fail("set_theme should swap in the custom font_size_pt")
 
 
+def test_reset_clip_emits_window_clip() raises:
+    """Test 14: reset_clip emits a CMD_CLIP for the full window rect."""
+    var ctx = Context()
+    ctx.begin_frame_no_input(Vec2(800.0, 600.0), Vec2(0.0, 0.0), False, False)
+    ctx.draw_clip(Rect(10.0, 20.0, 30.0, 40.0))
+    var before = Int32(ctx.commands.byte_count())
+    ctx.reset_clip()
+    if Int32(ctx.commands.kind_at(before)) != Int32(CMD_CLIP):
+        _fail("reset_clip should emit a CMD_CLIP")
+    var cmd = read_cmd_clip(ctx.commands, before)
+    if cmd.rect.x != 0.0 or cmd.rect.y != 0.0:
+        _fail("reset_clip rect origin should be window origin")
+    if cmd.rect.w != 800.0 or cmd.rect.h != 600.0:
+        _fail("reset_clip rect size should be full window")
+
+
 def main() raises:
     test_construct()
     test_begin_frame_sets_window_rect_and_root_layout()
@@ -277,4 +293,5 @@ def main() raises:
     test_begin_frame_twice_resets_state()
     test_set_default_font_updates_theme()
     test_set_theme_replaces_wholesale()
-    print("PASS: context smoke tests (13 tests)")
+    test_reset_clip_emits_window_clip()
+    print("PASS: context smoke tests (14 tests)")

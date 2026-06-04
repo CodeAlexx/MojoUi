@@ -126,15 +126,16 @@ comptime MOJOUI_BTN_MIDDLE: Int32 = 2
 # ============================================================
 
 def init_window(width: Int32, height: Int32, title: String) -> Int32:
-    """mojoui_init_window(w, h, title) -> int. Returns 0 on success.
+    """mojoui_init_window_len(w, h, title, title_len) -> int.
+    Returns 0 on success.
 
     Fills the static sapp_desc but does NOT run the sapp loop — call
     run_blocking() afterward to enter the frame loop. `title` must
     remain valid only for the duration of this call; the C side copies
     the string into its sapp_desc.window_title.
     """
-    return external_call["mojoui_init_window", Int32](
-        width, height, title.unsafe_ptr()
+    return external_call["mojoui_init_window_len", Int32](
+        width, height, title.unsafe_ptr(), Int32(title.byte_length())
     )
 
 
@@ -182,6 +183,16 @@ def get_window_width() -> Int32:
 def get_window_height() -> Int32:
     """mojoui_get_window_height() -> int. Current backbuffer height in px."""
     return external_call["mojoui_get_window_height", Int32]()
+
+
+def get_display_width() -> Int32:
+    """mojoui_get_display_width() -> int. Primary display width in px."""
+    return external_call["mojoui_get_display_width", Int32]()
+
+
+def get_display_height() -> Int32:
+    """mojoui_get_display_height() -> int. Primary display height in px."""
+    return external_call["mojoui_get_display_height", Int32]()
 
 
 def get_mouse_x() -> Int32:
@@ -294,17 +305,41 @@ def draw_batch(
     indices: UnsafePointer[UInt16, MutAnyOrigin],
     n_indices: Int32,
     texture_id: UInt32,
-):
-    """mojoui_draw_batch(verts, n_verts, indices, n_indices, texture_id).
+) -> Int32:
+    """mojoui_draw_batch_checked(verts, n_verts, indices, n_indices, texture_id).
 
     Vertex stride: 20 bytes = 5 floats per vertex (x, y, u, v, color_bits).
     The 5th "float" is a 0xAABBGGRR uint32 bit-reinterpreted (memcpy
     trick); the sokol pipeline reads attribute 2 at offset 16 as
     SG_VERTEXFORMAT_UBYTE4N. texture_id=0 → built-in 1×1 white texture
-    (for untextured colored geometry)."""
-    external_call["mojoui_draw_batch", NoneType](
+    (for untextured colored geometry).
+
+    Returns 1 when submitted, 0 when rejected by the C-floor validation
+    gate (bad counts, out-of-range indices, or stream-buffer overflow).
+    """
+    return external_call["mojoui_draw_batch_checked", Int32](
         verts, n_verts, indices, n_indices, texture_id
     )
+
+
+def set_clip_rect(x: Int32, y: Int32, width: Int32, height: Int32):
+    """mojoui_set_clip_rect(x, y, w, h). Applies a top-left-origin scissor."""
+    external_call["mojoui_set_clip_rect", NoneType](x, y, width, height)
+
+
+def reset_clip_rect():
+    """mojoui_reset_clip_rect(). Restores scissor to the full backbuffer."""
+    external_call["mojoui_reset_clip_rect", NoneType]()
+
+
+def max_batch_verts() -> Int32:
+    """mojoui_max_batch_verts() -> int."""
+    return external_call["mojoui_max_batch_verts", Int32]()
+
+
+def max_batch_indices() -> Int32:
+    """mojoui_max_batch_indices() -> int."""
+    return external_call["mojoui_max_batch_indices", Int32]()
 
 
 def make_texture(
@@ -327,7 +362,7 @@ def destroy_texture(texture_id: UInt32):
 # ============================================================
 
 def load_font(path: String) -> UInt32:
-    """mojoui_load_font(path) -> uint32_t font_id. Returns ≥1 on success,
+    """mojoui_load_font_len(path, path_len) -> uint32_t font_id. Returns ≥1 on success,
     0 on error. Empty string ("") triggers default search through
     Inter / JetBrainsMono / Roboto / SF Pro / DejaVu / Liberation paths.
 
@@ -335,12 +370,19 @@ def load_font(path: String) -> UInt32:
     cannot directly produce a NULL char*, so we pass an empty string and
     rely on the C side treating both NULL and "" as the default-search
     trigger (mojoui_fonts.c does exactly that)."""
-    return external_call["mojoui_load_font", UInt32](path.unsafe_ptr())
+    return external_call["mojoui_load_font_len", UInt32](
+        path.unsafe_ptr(), Int32(path.byte_length())
+    )
 
 
 def destroy_font(font_id: UInt32):
     """mojoui_destroy_font(font_id). Frees TTF buffer + GPU atlas textures."""
     external_call["mojoui_destroy_font", NoneType](font_id)
+
+
+def destroy_all_fonts():
+    """mojoui_destroy_all_fonts(). Frees every loaded font slot."""
+    external_call["mojoui_destroy_all_fonts", NoneType]()
 
 
 def text_width(font_id: UInt32, size_pt: Int32, text: String) -> Int32:

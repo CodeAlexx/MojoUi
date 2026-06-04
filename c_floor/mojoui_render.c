@@ -127,6 +127,40 @@ static sg_view mui_make_texture_view(sg_image img) {
     return sg_make_view(&vd);
 }
 
+static int mui_validate_batch(
+    const float*    verts,
+    int             n_verts,
+    const uint16_t* indices,
+    int             n_indices
+) {
+    if (!g_r.initialized) {
+        return 0;
+    }
+    if (verts == NULL || indices == NULL || n_verts <= 0 || n_indices <= 0) {
+        return 0;
+    }
+    if (n_verts > MUI_MAX_VERTS || n_indices > MUI_MAX_INDICES) {
+        return 0;
+    }
+    if ((n_indices % 3) != 0) {
+        return 0;
+    }
+    for (int i = 0; i < n_indices; i++) {
+        if ((int)indices[i] >= n_verts) {
+            return 0;
+        }
+    }
+    size_t vbytes = (size_t)n_verts * (size_t)MUI_VERT_STRIDE;
+    size_t ibytes = (size_t)n_indices * sizeof(uint16_t);
+    if (sg_query_buffer_will_overflow(g_r.vbuf, vbytes)) {
+        return 0;
+    }
+    if (sg_query_buffer_will_overflow(g_r.ibuf, ibytes)) {
+        return 0;
+    }
+    return 1;
+}
+
 /* ===========================================================
  * Public ABI
  * =========================================================== */
@@ -303,6 +337,7 @@ void mojoui_frame_begin(int clear_r, int clear_g, int clear_b, int clear_a) {
     u.u_screen_size[1] = (float)sapp_height();
     sg_range r = { &u, sizeof(u) };
     sg_apply_uniforms(0, &r);
+    mojoui_reset_clip_rect();
 }
 
 void mojoui_frame_end(void) {
@@ -313,18 +348,15 @@ void mojoui_frame_end(void) {
     sg_commit();
 }
 
-void mojoui_draw_batch(
+int mojoui_draw_batch_checked(
     const float*    verts,
     int             n_verts,
     const uint16_t* indices,
     int             n_indices,
     uint32_t        texture_id
 ) {
-    if (!g_r.initialized) {
-        return;
-    }
-    if (verts == NULL || indices == NULL || n_verts <= 0 || n_indices <= 0) {
-        return;
+    if (!mui_validate_batch(verts, n_verts, indices, n_indices)) {
+        return 0;
     }
 
     /* append per-frame geometry into the streaming buffers. */
@@ -363,6 +395,53 @@ void mojoui_draw_batch(
     if (texture_id != 0) {
         sg_destroy_view(tex_view);
     }
+    return 1;
+}
+
+void mojoui_draw_batch(
+    const float*    verts,
+    int             n_verts,
+    const uint16_t* indices,
+    int             n_indices,
+    uint32_t        texture_id
+) {
+    (void)mojoui_draw_batch_checked(verts, n_verts, indices, n_indices, texture_id);
+}
+
+void mojoui_set_clip_rect(int x, int y, int width, int height) {
+    if (!g_r.initialized) {
+        return;
+    }
+    if (width < 0) {
+        width = 0;
+    }
+    if (height < 0) {
+        height = 0;
+    }
+    sg_apply_scissor_rect(x, y, width, height, true);
+}
+
+void mojoui_reset_clip_rect(void) {
+    if (!g_r.initialized) {
+        return;
+    }
+    int w = sapp_width();
+    int h = sapp_height();
+    if (w < 0) {
+        w = 0;
+    }
+    if (h < 0) {
+        h = 0;
+    }
+    sg_apply_scissor_rect(0, 0, w, h, true);
+}
+
+int mojoui_max_batch_verts(void) {
+    return MUI_MAX_VERTS;
+}
+
+int mojoui_max_batch_indices(void) {
+    return MUI_MAX_INDICES;
 }
 
 uint32_t mojoui_make_texture(int width, int height, const uint8_t* rgba_pixels) {
