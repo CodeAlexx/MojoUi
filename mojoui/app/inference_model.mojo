@@ -119,8 +119,7 @@ struct HistoryItem(Copyable, Movable):
 
 
 # ---------------------------------------------------------------------------
-# PerfTelemetry — mock GPU stats (NVML deferred). Constants mirror state.rs
-# `PerfTelemetry::mock()`.
+# PerfTelemetry — live GPU stats filled by the UI through Backend.system_metrics().
 # ---------------------------------------------------------------------------
 
 
@@ -132,11 +131,11 @@ struct PerfTelemetry(Copyable, Movable):
     var temperature_c: Float32
 
     def __init__(out self):
-        self.gpu_name = String("RTX 4090 (mock)")
-        self.vram_used_gb = 19.1
-        self.vram_total_gb = 24.0
+        self.gpu_name = String("GPU telemetry pending")
+        self.vram_used_gb = 0.0
+        self.vram_total_gb = 0.0
         self.gpu_util_pct = 0.0
-        self.temperature_c = 45.0
+        self.temperature_c = 0.0
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ Run: `pixi run test-comfy-workflow`
 
 from mojoui.core.id import RetainedId
 from mojoui.nodes.node import FK_STRING
-from mojoui.nodes.port import NVT_IMAGE, NVT_VIDEO, NVT_BBOX
+from mojoui.nodes.port import NVT_IMAGE, NVT_VIDEO, NVT_BBOX, NVT_MODEL, NVT_CLIP
 from mojoui.serde.comfy_workflow import parse_comfy_workflow
 
 
@@ -93,6 +93,59 @@ def test_parse_visual_workflow_nodes_links_groups() raises:
     print("PASS: test_parse_visual_workflow_nodes_links_groups")
 
 
+def test_parse_swarm_workflow_wrapper() raises:
+    var raw = String(
+        "{"
+        + "\"workflow\":{"
+        + "\"nodes\":["
+        + "{\"id\":5,\"type\":\"EmptyLatentImage\",\"pos\":[128,256],\"size\":{\"0\":315,\"1\":106},\"outputs\":[{\"name\":\"LATENT\",\"type\":\"LATENT\",\"slot_index\":0,\"links\":[]}]}"
+        + "],"
+        + "\"links\":[],\"groups\":[]"
+        + "}"
+        + "}"
+    )
+    var imported = parse_comfy_workflow(raw)
+    if imported.graph.node_count() != 1:
+        _fail("wrapper: expected one node")
+    if imported.graph.nodes[0].position.x != 128.0 or imported.graph.nodes[0].position.y != 256.0:
+        _fail("wrapper: position should parse from nested workflow")
+    if imported.graph.nodes[0].size.x != 315.0 or imported.graph.nodes[0].size.y != 106.0:
+        _fail("wrapper: indexed-object size should parse")
+    print("PASS: test_parse_swarm_workflow_wrapper")
+
+
+def test_parse_comfy_api_prompt() raises:
+    var raw = String(
+        "{"
+        + "\"1\":{\"class_type\":\"UNETLoader\",\"inputs\":{\"unet_name\":\"flux2-klein-9b.safetensors\"},\"_meta\":{\"title\":\"Load Klein 9B\"}},"
+        + "\"2\":{\"class_type\":\"CLIPLoader\",\"inputs\":{\"clip_name\":\"Qwen/Qwen3-8B\",\"type\":\"klein\"}},"
+        + "\"3\":{\"class_type\":\"CLIPTextEncode\",\"inputs\":{\"clip\":[\"2\",0],\"text\":\"a beautiful landscape\"}},"
+        + "\"4\":{\"class_type\":\"KSampler\",\"inputs\":{\"model\":[\"1\",0],\"positive\":[\"3\",0],\"negative\":[\"3\",0],\"seed\":42,\"steps\":8,\"cfg\":3.5}}"
+        + "}"
+    )
+    var imported = parse_comfy_workflow(raw)
+    if imported.graph.node_count() != 4:
+        _fail("api: expected 4 nodes")
+    if imported.graph.edge_count() != 4:
+        _fail("api: expected 4 inferred edges, got " + String(imported.graph.edge_count()))
+    if imported.graph.nodes[0].outputs[0].value_type != NVT_MODEL:
+        _fail("api: UNETLoader should infer MODEL output")
+    if imported.graph.nodes[1].outputs[0].value_type != NVT_CLIP:
+        _fail("api: CLIPLoader should infer CLIP output")
+    if imported.graph.edges[0].from_node != RetainedId(2) or imported.graph.edges[0].to_node != RetainedId(3):
+        _fail("api: clip edge endpoints should import")
+    if imported.graph.edges[0].from_port != String("CLIP") or imported.graph.edges[0].to_port != String("clip"):
+        _fail("api: clip edge ports should infer by slot/name")
+    var text = imported.graph.nodes[2].get_field(String("text"))
+    if text.kind != FK_STRING or text.str_val != String("a beautiful landscape"):
+        _fail("api: constant input text should become field")
+    if len(imported.canvas.groups) != 1:
+        _fail("api: auto group should be created")
+    print("PASS: test_parse_comfy_api_prompt")
+
+
 def main() raises:
     test_parse_visual_workflow_nodes_links_groups()
+    test_parse_swarm_workflow_wrapper()
+    test_parse_comfy_api_prompt()
     print("PASS: all Comfy workflow import smoke tests")

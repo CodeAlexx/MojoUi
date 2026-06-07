@@ -65,6 +65,8 @@ def parse_comfy_workflow(raw: String) raises -> ComfyWorkflowImport:
 
     Supported shape:
       - top-level `nodes`: array of visual nodes;
+      - top-level `workflow`: SwarmUI wrapper around a visual workflow;
+      - Comfy API prompt object keyed by node id with `class_type`/`inputs`;
       - top-level `links`: array of `[id, from_node, from_slot, to_node,
         to_slot, type]`;
       - top-level `groups`: array with `bounding: [x, y, w, h]`.
@@ -75,16 +77,20 @@ def parse_comfy_workflow(raw: String) raises -> ComfyWorkflowImport:
     var root = parse_json(raw)
     if root.kind != JK_OBJECT:
         raise Error("Comfy workflow root must be an object")
+    var wrapped = root.get_object_field(String("workflow"))
+    if wrapped.kind == JK_OBJECT:
+        root = wrapped^
     var nodes_val = root.get_object_field(String("nodes"))
-    if nodes_val.kind != JK_ARRAY:
-        raise Error("Comfy workflow must contain a visual nodes array")
 
     var graph = Graph()
     var canvas = CanvasState()
-    _parse_comfy_nodes(nodes_val, graph)
-    _seed_graph_allocator(graph)
-    _parse_comfy_links(root.get_object_field(String("links")), graph)
-    _parse_comfy_groups(root.get_object_field(String("groups")), canvas, graph)
+    if nodes_val.kind == JK_ARRAY:
+        _parse_comfy_nodes(nodes_val, graph)
+        _seed_graph_allocator(graph)
+        _parse_comfy_links(root.get_object_field(String("links")), graph)
+        _parse_comfy_groups(root.get_object_field(String("groups")), canvas, graph)
+    else:
+        _parse_comfy_api_prompt(root, graph, canvas)
     return ComfyWorkflowImport(graph^, canvas^)
 
 
@@ -113,11 +119,13 @@ def _json_string(value: JsonValue, fallback: String) -> String:
 
 
 def _array_number(value: JsonValue, index: Int, fallback: Float64) -> Float64:
-    if value.kind != JK_ARRAY:
-        return fallback
-    if index < 0 or index >= len(value.arr_val):
-        return fallback
-    return _json_number(value.arr_val[index].copy(), fallback)
+    if value.kind == JK_ARRAY:
+        if index < 0 or index >= len(value.arr_val):
+            return fallback
+        return _json_number(value.arr_val[index].copy(), fallback)
+    if value.kind == JK_OBJECT:
+        return _json_number(value.get_object_field(String(index)), fallback)
+    return fallback
 
 
 def _field_from_json(value: JsonValue) -> FieldValue:
@@ -197,7 +205,7 @@ def _parse_comfy_nodes(nodes_val: JsonValue, mut graph: Graph) raises:
             Float32(_array_number(pos, 1, 0.0)),
         )
         var size = node_val.get_object_field(String("size"))
-        if size.kind == JK_ARRAY:
+        if size.kind == JK_ARRAY or size.kind == JK_OBJECT:
             node.size = Vec2(
                 Float32(_array_number(size, 0, Float64(node.size.x))),
                 Float32(_array_number(size, 1, Float64(node.size.y))),
@@ -221,6 +229,198 @@ def _parse_comfy_nodes(nodes_val: JsonValue, mut graph: Graph) raises:
         _parse_comfy_properties(node, node_val.get_object_field(String("properties")))
 
         graph.nodes.append(node^)
+
+
+def _parse_comfy_api_prompt(root: JsonValue, mut graph: Graph, mut canvas: CanvasState) raises:
+    """Import Comfy API prompt JSON: `{ "1": {"class_type": ..., "inputs": ...} }`.
+
+    API prompts do not carry canvas coordinates or socket declarations, so this
+    builds a deterministic grid layout and infers common Comfy socket types
+    from node class names and input names.
+    """
+    var node_keys = List[String]()
+    for i in range(len(root.obj_keys)):
+        var key = root.obj_keys[i].copy()
+        var node_val = root.obj_values[i].copy()
+        if node_val.kind != JK_OBJECT:
+            continue
+        var class_val = node_val.get_object_field(String("class_type"))
+        if class_val.kind == JK_STRING:
+            node_keys.append(key^)
+    if len(node_keys) == 0:
+        raise Error("Comfy workflow must contain visual nodes or API prompt nodes")
+
+    for i in range(len(node_keys)):
+        var key = node_keys[i].copy()
+        var node_val = root.get_object_field(key)
+        var class_type = _json_string(node_val.get_object_field(String("class_type")), String("Unknown"))
+        var id_num = _parse_id_string(key, Int64(i + 1))
+        if id_num < Int64(1):
+            id_num = Int64(i + 1)
+        var node = Node(RetainedId(id_num), String("comfy/") + class_type)
+        var meta = node_val.get_object_field(String("_meta"))
+        node.title = _json_string(meta.get_object_field(String("title")), class_type.copy())
+        node.position = Vec2(Float32(80 + (i % 5) * 390), Float32(80 + (i / 5) * 220))
+        node.size = _default_api_node_size(class_type)
+        node.set_field(String("comfy_type"), FieldValue.string(class_type.copy()))
+
+        var inputs = node_val.get_object_field(String("inputs"))
+        if inputs.kind == JK_OBJECT:
+            _parse_api_node_inputs(node, inputs)
+        _add_api_outputs(node, class_type)
+        graph.nodes.append(node^)
+
+    _seed_graph_allocator(graph)
+    _parse_api_edges(root, graph)
+    var rows = (len(node_keys) + 4) / 5
+    var bounds = Rect(40.0, 40.0, Float32(5 * 390), Float32(rows * 220 + 120))
+    var group = CanvasGroup(Int64(1), String("Comfy API Workflow"), bounds, Color(68, 110, 180, 70))
+    for i in range(graph.node_count()):
+        group.members.append(graph.nodes[i].id)
+    canvas.groups.append(group^)
+    canvas.next_group_id = Int64(2)
+
+
+def _parse_api_node_inputs(mut node: Node, inputs: JsonValue):
+    for i in range(len(inputs.obj_keys)):
+        var key = inputs.obj_keys[i].copy()
+        var value = inputs.obj_values[i].copy()
+        if _is_api_link(value):
+            node.add_input(PortRef(key.copy(), _infer_port_type_from_name(key)))
+        else:
+            node.set_field(key, _field_from_json(value))
+
+
+def _parse_api_edges(root: JsonValue, mut graph: Graph):
+    for i in range(len(root.obj_keys)):
+        var key = root.obj_keys[i].copy()
+        var node_val = root.obj_values[i].copy()
+        if node_val.kind != JK_OBJECT:
+            continue
+        var class_val = node_val.get_object_field(String("class_type"))
+        if class_val.kind != JK_STRING:
+            continue
+        var to_node = RetainedId(_parse_id_string(key, Int64(0)))
+        if to_node == RetainedId(0):
+            continue
+        var inputs = node_val.get_object_field(String("inputs"))
+        if inputs.kind != JK_OBJECT:
+            continue
+        for pi in range(len(inputs.obj_keys)):
+            var port_name = inputs.obj_keys[pi].copy()
+            var value = inputs.obj_values[pi].copy()
+            if not _is_api_link(value):
+                continue
+            var from_node = RetainedId(_api_link_node_id(value))
+            var from_slot = _api_link_slot(value)
+            if from_node == RetainedId(0):
+                continue
+            var from_port = _port_name_by_slot(graph, from_node, from_slot, True)
+            _ = graph.add_edge(from_node, from_port, to_node, port_name)
+
+
+def _is_api_link(value: JsonValue) -> Bool:
+    if value.kind != JK_ARRAY or len(value.arr_val) < 2:
+        return False
+    var node_ref = value.arr_val[0].copy()
+    var slot_ref = value.arr_val[1].copy()
+    return (node_ref.kind == JK_STRING or node_ref.kind == JK_NUMBER) and slot_ref.kind == JK_NUMBER
+
+
+def _api_link_node_id(value: JsonValue) -> Int64:
+    if value.kind != JK_ARRAY or len(value.arr_val) < 1:
+        return Int64(0)
+    var node_ref = value.arr_val[0].copy()
+    if node_ref.kind == JK_NUMBER:
+        return Int64(node_ref.num_val)
+    if node_ref.kind == JK_STRING:
+        return _parse_id_string(node_ref.str_val, Int64(0))
+    return Int64(0)
+
+
+def _api_link_slot(value: JsonValue) -> Int:
+    if value.kind != JK_ARRAY or len(value.arr_val) < 2:
+        return 0
+    return Int(_json_i64(value.arr_val[1].copy(), Int64(0)))
+
+
+def _parse_id_string(text: String, fallback: Int64) -> Int64:
+    var n = text.byte_length()
+    if n == 0:
+        return fallback
+    var ptr = text.unsafe_ptr()
+    var i = 0
+    var value = Int64(0)
+    while i < n:
+        var c = ptr[i]
+        if c < UInt8(48) or c > UInt8(57):
+            return fallback
+        value = value * Int64(10) + Int64(c - UInt8(48))
+        i = i + 1
+    return value
+
+
+def _default_api_node_size(class_type: String) -> Vec2:
+    if _contains_ci(class_type, String("sampler")):
+        return Vec2(360.0, 260.0)
+    if _contains_ci(class_type, String("textencode")):
+        return Vec2(420.0, 180.0)
+    if _contains_ci(class_type, String("saveimage")):
+        return Vec2(320.0, 180.0)
+    return Vec2(320.0, 130.0)
+
+
+def _add_api_outputs(mut node: Node, class_type: String):
+    if _contains_ci(class_type, String("checkpointloader")):
+        node.add_output(PortRef(String("MODEL"), NVT_MODEL))
+        node.add_output(PortRef(String("CLIP"), NVT_CLIP))
+        node.add_output(PortRef(String("VAE"), NVT_VAE))
+    elif _contains_ci(class_type, String("loraloader")) or _contains_ci(class_type, String("powerlora")):
+        node.add_output(PortRef(String("MODEL"), NVT_MODEL))
+        node.add_output(PortRef(String("CLIP"), NVT_CLIP))
+    elif _contains_ci(class_type, String("unetloader")) or _contains_ci(class_type, String("diffusionmodelloader")):
+        node.add_output(PortRef(String("MODEL"), NVT_MODEL))
+    elif _contains_ci(class_type, String("cliploader")) or _contains_ci(class_type, String("dualcliploader")) or _contains_ci(class_type, String("triplecliploader")):
+        node.add_output(PortRef(String("CLIP"), NVT_CLIP))
+    elif _contains_ci(class_type, String("vaeloader")):
+        node.add_output(PortRef(String("VAE"), NVT_VAE))
+    elif _contains_ci(class_type, String("controlnetloader")):
+        node.add_output(PortRef(String("CONTROL_NET"), NVT_MODEL))
+    elif _contains_ci(class_type, String("cliptextencode")) or _contains_ci(class_type, String("conditioning")):
+        node.add_output(PortRef(String("CONDITIONING"), NVT_CONDITIONING))
+    elif _contains_ci(class_type, String("emptylatent")) or _contains_ci(class_type, String("latentimage")) or _contains_ci(class_type, String("ksampler")) or _contains_ci(class_type, String("samplercustom")) or _contains_ci(class_type, String("vaeencode")):
+        node.add_output(PortRef(String("LATENT"), NVT_LATENT))
+    elif _contains_ci(class_type, String("vaedecode")) or _contains_ci(class_type, String("loadimage")) or _contains_ci(class_type, String("image")):
+        if not _contains_ci(class_type, String("saveimage")):
+            node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+    elif _contains_ci(class_type, String("video")):
+        node.add_output(PortRef(String("VIDEO"), NVT_VIDEO))
+    elif _contains_ci(class_type, String("text")) or _contains_ci(class_type, String("string")):
+        node.add_output(PortRef(String("STRING"), NVT_TEXT))
+
+
+def _infer_port_type_from_name(name: String) -> Int32:
+    if _contains_ci(name, String("model")):
+        return NVT_MODEL
+    if _contains_ci(name, String("clip")):
+        return NVT_CLIP
+    if _contains_ci(name, String("vae")):
+        return NVT_VAE
+    if _contains_ci(name, String("positive")) or _contains_ci(name, String("negative")) or _contains_ci(name, String("conditioning")) or _contains_ci(name, String("cond")):
+        return NVT_CONDITIONING
+    if _contains_ci(name, String("latent")) or _contains_ci(name, String("samples")):
+        return NVT_LATENT
+    if _contains_ci(name, String("image")) or _contains_ci(name, String("pixels")):
+        return NVT_IMAGE
+    if _contains_ci(name, String("video")):
+        return NVT_VIDEO
+    if _contains_ci(name, String("seed")):
+        return NVT_SEED
+    if _contains_ci(name, String("width")) or _contains_ci(name, String("height")) or _contains_ci(name, String("steps")) or _contains_ci(name, String("cfg")) or _contains_ci(name, String("denoise")):
+        return NVT_NUMBER
+    if _contains_ci(name, String("enable")) or _contains_ci(name, String("enabled")):
+        return NVT_BOOL
+    return NVT_TEXT
 
 
 def _parse_comfy_ports(mut node: Node, ports_val: JsonValue, is_input: Bool):
@@ -380,3 +580,38 @@ def _parse_comfy_groups(groups_val: JsonValue, mut canvas: CanvasState, graph: G
         if group_id >= next_id:
             next_id = group_id + Int64(1)
     canvas.next_group_id = next_id
+
+
+def _lower_ascii(s: String) -> String:
+    var out = List[UInt8](capacity=s.byte_length())
+    var ptr = s.unsafe_ptr()
+    for i in range(s.byte_length()):
+        var b = ptr[i]
+        if b >= UInt8(65) and b <= UInt8(90):
+            b = b + UInt8(32)
+        out.append(b)
+    return String(unsafe_from_utf8=out)
+
+
+def _contains_substr(haystack: String, needle: String) -> Bool:
+    var hn = haystack.byte_length()
+    var nn = needle.byte_length()
+    if nn == 0:
+        return True
+    if nn > hn:
+        return False
+    var hp = haystack.unsafe_ptr()
+    var np = needle.unsafe_ptr()
+    for i in range(hn - nn + 1):
+        var matched = True
+        for j in range(nn):
+            if hp[i + j] != np[j]:
+                matched = False
+                break
+        if matched:
+            return True
+    return False
+
+
+def _contains_ci(haystack: String, needle: String) -> Bool:
+    return _contains_substr(_lower_ascii(haystack), _lower_ascii(needle))
