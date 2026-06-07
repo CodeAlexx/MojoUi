@@ -67,6 +67,8 @@ from mojoui.nodes.progress import (
     PROG_DONE,
 )
 from mojoui.app.state import store_user_state, retrieve_user_state
+from mojoui.app.inference_model import InferenceState, QueueJob
+from mojoui.app.inference_graph_bridge import build_klein9b_inference_graph
 from mojoui.serde.comfy_workflow import parse_comfy_workflow
 
 
@@ -99,133 +101,24 @@ struct NodeGraphDemoState(Movable):
         var reg = NodeRegistry()
         register_builtins(reg)
 
-        var g = Graph()
-        # A larger SerenityUI workflow that exercises image nodes, bboxes,
-        # Ideogram prompt/generate logic, video preview, groups, minimap,
-        # typed wires, and field-heavy nodes on the same canvas.
-        var load_image = g.id_alloc.alloc()
-        var load_image_node = reg.make_node(
-            String("core/load_image"), Vec2(90.0, 180.0), load_image
+        var inference = InferenceState()
+        var display = QueueJob(
+            UInt64(1),
+            inference.prompt.copy(),
+            Int32(Int(inference.width)),
+            Int32(Int(inference.height)),
+            Int32(Int(inference.steps)),
+            inference.sampler_label(),
+            Int64(-1),
+            UInt32(0),
         )
-        load_image_node.title = String("Image Node")
-        load_image_node.size = Vec2(320.0, 330.0)
-        load_image_node.fields[String("path")] = FieldValue.string(
-            String("/home/alex/Downloads/image (17).webp")
+        var g = build_klein9b_inference_graph(
+            inference,
+            display,
+            String("/home/alex/mojodiffusion/output/serenityui_klein9b_nodes.png"),
+            Int32(1024),
+            Int32(1024),
         )
-        load_image_node.fields[String("upload_label")] = FieldValue.string(
-            String("SerenityUI reference image")
-        )
-        g.nodes.append(load_image_node^)
-
-        var prompt_builder = g.id_alloc.alloc()
-        var prompt_builder_node = reg.make_node(
-            String("core/ideogram4_prompt_builder"),
-            Vec2(500.0, 80.0),
-            prompt_builder,
-        )
-        prompt_builder_node.title = String("SerenityUI Ideogram Prompt Builder")
-        prompt_builder_node.size = Vec2(640.0, 650.0)
-        prompt_builder_node.fields[String("width")] = FieldValue.int_(Int64(1024))
-        prompt_builder_node.fields[String("height")] = FieldValue.int_(Int64(1024))
-        prompt_builder_node.fields[String("high_level_description")] = FieldValue.string(
-            String("anime image-to-video layout with precise bbox composition")
-        )
-        prompt_builder_node.fields[String("background")] = FieldValue.string(
-            String("soft-lit studio backdrop with clean depth and readable silhouettes")
-        )
-        prompt_builder_node.fields[String("art_style")] = FieldValue.string(
-            String("anime key art, expressive line work")
-        )
-        prompt_builder_node.fields[String("aesthetics")] = FieldValue.string(
-            String("polished, cinematic, sharp focus")
-        )
-        prompt_builder_node.fields[String("lighting")] = FieldValue.string(
-            String("rim light, soft volumetric fill")
-        )
-        prompt_builder_node.fields[String("medium")] = FieldValue.string(
-            String("digital painting")
-        )
-        prompt_builder_node.fields[String("elements_data")] = FieldValue.string(
-            String("[{\"label\":\"subject\",\"x\":0.16,\"y\":0.12,\"w\":0.42,\"h\":0.72},{\"label\":\"motion cue\",\"x\":0.58,\"y\":0.25,\"w\":0.26,\"h\":0.30}]")
-        )
-        g.nodes.append(prompt_builder_node^)
-
-        var magic_prompt = g.id_alloc.alloc()
-        var magic_prompt_node = reg.make_node(
-            String("core/ideogram4_magic_prompt"),
-            Vec2(1220.0, 150.0),
-            magic_prompt,
-        )
-        magic_prompt_node.title = String("Ideogram4 Magic Prompt")
-        magic_prompt_node.size = Vec2(370.0, 180.0)
-        magic_prompt_node.fields[String("magic_prompt_model")] = FieldValue.string(
-            String("qwen3-local-v1")
-        )
-        g.nodes.append(magic_prompt_node^)
-
-        var text_preview = g.id_alloc.alloc()
-        var text_preview_node = reg.make_node(
-            String("core/preview_text"), Vec2(1220.0, 395.0), text_preview
-        )
-        text_preview_node.title = String("Prompt Preview")
-        text_preview_node.size = Vec2(370.0, 230.0)
-        text_preview_node.fields[String("previewMode")] = FieldValue.string(
-            String("JSON + prompt text")
-        )
-        g.nodes.append(text_preview_node^)
-
-        var generate = g.id_alloc.alloc()
-        var generate_node = reg.make_node(
-            String("core/ideogram4_generate"), Vec2(1700.0, 130.0), generate
-        )
-        generate_node.title = String("Ideogram4 Generate GPU")
-        generate_node.size = Vec2(380.0, 270.0)
-        generate_node.fields[String("preset")] = FieldValue.string(
-            String("V4_QUALITY_48")
-        )
-        generate_node.fields[String("steps")] = FieldValue.int_(Int64(48))
-        generate_node.fields[String("magic_prompt")] = FieldValue.bool_(True)
-        g.nodes.append(generate_node^)
-
-        var save_image = g.id_alloc.alloc()
-        var save_image_node = reg.make_node(
-            String("core/save_image"), Vec2(2220.0, 205.0), save_image
-        )
-        save_image_node.title = String("Save / Preview Image")
-        save_image_node.size = Vec2(330.0, 125.0)
-        save_image_node.fields[String("path")] = FieldValue.string(
-            String("/home/alex/mojodiffusion/output/ideogram4_generated_1024.png")
-        )
-        g.nodes.append(save_image_node^)
-
-        var load_video = g.id_alloc.alloc()
-        var load_video_node = reg.make_node(
-            String("core/load_video"), Vec2(500.0, 850.0), load_video
-        )
-        load_video_node.title = String("Load Video")
-        load_video_node.size = Vec2(330.0, 145.0)
-        load_video_node.fields[String("path")] = FieldValue.string(
-            String("/home/alex/Downloads/lance_i2v_anime.mp4")
-        )
-        load_video_node.fields[String("frame_count")] = FieldValue.int_(Int64(96))
-        g.nodes.append(load_video_node^)
-
-        var preview_video = g.id_alloc.alloc()
-        var preview_video_node = reg.make_node(
-            String("core/preview_video"), Vec2(930.0, 850.0), preview_video
-        )
-        preview_video_node.title = String("Preview Video")
-        preview_video_node.size = Vec2(340.0, 160.0)
-        preview_video_node.fields[String("autoplay")] = FieldValue.bool_(True)
-        preview_video_node.fields[String("loop")] = FieldValue.bool_(True)
-        g.nodes.append(preview_video_node^)
-
-        _ = g.add_edge(load_image, String("image"), prompt_builder, String("image"))
-        _ = g.add_edge(prompt_builder, String("prompt"), magic_prompt, String("prompt"))
-        _ = g.add_edge(prompt_builder, String("prompt"), text_preview, String("source"))
-        _ = g.add_edge(magic_prompt, String("caption_json"), generate, String("caption_json"))
-        _ = g.add_edge(generate, String("image"), save_image, String("image"))
-        _ = g.add_edge(load_video, String("video"), preview_video, String("video"))
 
         self.registry = reg^
         self.graph = g^
@@ -235,30 +128,16 @@ struct NodeGraphDemoState(Movable):
         canvas.show_minimap = True
         canvas.snap_to_grid = True
 
-        var image_group = CanvasGroup(
+        var klein_group = CanvasGroup(
             Int64(1),
-            String("SerenityUI Ideogram Image Workflow"),
-            Rect(45.0, 35.0, 2610.0, 755.0),
+            String("SerenityUI Klein 9B Generate Workflow"),
+            Rect(20.0, 40.0, 1785.0, 460.0),
             Color(64, 118, 210, 68),
         )
-        image_group.members.append(load_image)
-        image_group.members.append(prompt_builder)
-        image_group.members.append(magic_prompt)
-        image_group.members.append(text_preview)
-        image_group.members.append(generate)
-        image_group.members.append(save_image)
-        canvas.groups.append(image_group^)
-
-        var video_group = CanvasGroup(
-            Int64(2),
-            String("Video Preview Lane"),
-            Rect(455.0, 805.0, 860.0, 245.0),
-            Color(80, 180, 190, 58),
-        )
-        video_group.members.append(load_video)
-        video_group.members.append(preview_video)
-        canvas.groups.append(video_group^)
-        canvas.next_group_id = Int64(3)
+        for i in range(self.graph.node_count()):
+            klein_group.members.append(self.graph.nodes[i].id)
+        canvas.groups.append(klein_group^)
+        canvas.next_group_id = Int64(2)
         self.canvas = canvas^
         self.progress = ProgressState()
         self.addmenu = AddMenuState()
@@ -269,7 +148,7 @@ struct NodeGraphDemoState(Movable):
         self.run_idx = 0
         self.run_tick = 0
         self.last_action = String(
-            "SerenityUI graph: image bbox builder, Ideogram GPU nodes, video preview, groups, minimap"
+            "SerenityUI graph: Klein 9B checkpoint, prompts, sampler, VAE decode, save image"
         )
         self.font_id = 0
 
