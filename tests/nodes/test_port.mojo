@@ -13,6 +13,8 @@ from mojoui.nodes.port import (
     NVT_TEXT,
     NVT_SEED,
     NVT_BOOL,
+    NVT_VIDEO,
+    NVT_BBOX,
     NVT_COUNT,
     Port,
     node_value_type_name,
@@ -27,10 +29,10 @@ def _fail(msg: String) raises:
 
 
 def test_node_value_type_constants_distinct() raises:
-    """Test 1: all 11 NodeValueType constants are pairwise distinct AND
+    """Test 1: all 13 NodeValueType constants are pairwise distinct AND
     NVT_COUNT is one past the last variant.
     """
-    # Build a List[NodeValueType] of all 11 variants in declaration order
+    # Build a List[NodeValueType] of all 13 variants in declaration order
     # then verify each value matches its expected ordinal AND every pair is
     # distinct.
     var all_types = List[NodeValueType]()
@@ -45,9 +47,11 @@ def test_node_value_type_constants_distinct() raises:
     all_types.append(NVT_TEXT)
     all_types.append(NVT_SEED)
     all_types.append(NVT_BOOL)
+    all_types.append(NVT_VIDEO)
+    all_types.append(NVT_BBOX)
 
-    if Int(len(all_types)) != 11:
-        _fail("expected 11 NodeValueType variants, got " + String(len(all_types)))
+    if Int(len(all_types)) != 13:
+        _fail("expected 13 NodeValueType variants, got " + String(len(all_types)))
 
     # Verify each variant equals its expected ordinal.
     for i in range(Int(len(all_types))):
@@ -61,7 +65,7 @@ def test_node_value_type_constants_distinct() raises:
                 + String(i)
             )
 
-    # Pairwise distinctness — O(n^2) but n=11 so trivial.
+    # Pairwise distinctness — O(n^2) but n=13 so trivial.
     for i in range(Int(len(all_types))):
         for j in range(i + 1, Int(len(all_types))):
             if all_types[i] == all_types[j]:
@@ -74,15 +78,15 @@ def test_node_value_type_constants_distinct() raises:
                     + String(Int(all_types[i]))
                 )
 
-    # NVT_COUNT must be one past NVT_BOOL (the last valid variant).
-    if Int(NVT_COUNT) != 11:
-        _fail("NVT_COUNT expected 11, got " + String(Int(NVT_COUNT)))
+    # NVT_COUNT must be one past NVT_BBOX (the last valid variant).
+    if Int(NVT_COUNT) != 13:
+        _fail("NVT_COUNT expected 13, got " + String(Int(NVT_COUNT)))
 
-    print("PASS: test_node_value_type_constants_distinct (11 variants, NVT_COUNT=11)")
+    print("PASS: test_node_value_type_constants_distinct (13 variants, NVT_COUNT=13)")
 
 
 def test_node_value_type_name_round_trip() raises:
-    """Test 2: from_name(name(t)) == t for all 11 variants."""
+    """Test 2: from_name(name(t)) == t for all 13 variants."""
     var types = List[NodeValueType]()
     types.append(NVT_LATENT)
     types.append(NVT_IMAGE)
@@ -95,6 +99,8 @@ def test_node_value_type_name_round_trip() raises:
     types.append(NVT_TEXT)
     types.append(NVT_SEED)
     types.append(NVT_BOOL)
+    types.append(NVT_VIDEO)
+    types.append(NVT_BBOX)
 
     for i in range(Int(len(types))):
         var t = types[i]
@@ -110,7 +116,7 @@ def test_node_value_type_name_round_trip() raises:
                 + String(Int(t2))
             )
 
-    print("PASS: test_node_value_type_name_round_trip (11/11)")
+    print("PASS: test_node_value_type_name_round_trip (13/13)")
 
 
 def test_node_value_type_from_name_invalid() raises:

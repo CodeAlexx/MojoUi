@@ -134,6 +134,11 @@ def _fit_rect(bounds: Rect, image_width: Int32, image_height: Int32) -> Rect:
     )
 
 
+def image_fit_rect(bounds: Rect, image_width: Int32, image_height: Int32) -> Rect:
+    """Public aspect-fit helper used by image overlays and node previews."""
+    return _fit_rect(bounds.copy(), image_width, image_height)
+
+
 def image_rect_fit(
     mut ctx: Context,
     rect: Rect,
@@ -146,6 +151,182 @@ def image_rect_fit(
     decoded texture dimensions are known."""
     var draw_rect = _fit_rect(rect.copy(), image_width, image_height)
     ctx.draw_image(draw_rect.copy(), texture_id, tint.copy())
+
+
+struct ImageOverlayBox(Copyable, Movable):
+    """Pixel-space image annotation box.
+
+    `rect_px` is in source image pixels, not screen coordinates. This keeps
+    boxes stable across zoom, pan, preview-card size, and imported workflow
+    layouts.
+    """
+
+    var id: Int64
+    var rect_px: Rect
+    var label: String
+    var description: String
+    var color: Color
+    var selected: Bool
+
+    def __init__(out self):
+        self.id = Int64(0)
+        self.rect_px = Rect()
+        self.label = String("")
+        self.description = String("")
+        self.color = Color(80, 180, 255, 220)
+        self.selected = False
+
+    def __init__(
+        out self,
+        id: Int64,
+        rect_px: Rect,
+        label: String,
+        description: String,
+        color: Color,
+        selected: Bool = False,
+    ):
+        self.id = id
+        self.rect_px = rect_px.copy()
+        self.label = label.copy()
+        self.description = description.copy()
+        self.color = color.copy()
+        self.selected = selected
+
+
+def image_pixel_to_screen_rect(
+    fitted_rect: Rect,
+    image_width: Int32,
+    image_height: Int32,
+    rect_px: Rect,
+) -> Rect:
+    """Map a source-image pixel rect into the fitted screen image rect."""
+    if image_width <= 0 or image_height <= 0 or fitted_rect.w <= 0.0 or fitted_rect.h <= 0.0:
+        return Rect()
+    var sx = fitted_rect.w / Float32(image_width)
+    var sy = fitted_rect.h / Float32(image_height)
+    return Rect(
+        fitted_rect.x + rect_px.x * sx,
+        fitted_rect.y + rect_px.y * sy,
+        rect_px.w * sx,
+        rect_px.h * sy,
+    )
+
+
+def image_screen_to_pixel_point(
+    fitted_rect: Rect,
+    image_width: Int32,
+    image_height: Int32,
+    point: Vec2,
+) -> Vec2:
+    """Map a screen point inside the fitted image back to source pixels."""
+    if image_width <= 0 or image_height <= 0 or fitted_rect.w <= 0.0 or fitted_rect.h <= 0.0:
+        return Vec2.zero()
+    return Vec2(
+        (point.x - fitted_rect.x) * Float32(image_width) / fitted_rect.w,
+        (point.y - fitted_rect.y) * Float32(image_height) / fitted_rect.h,
+    )
+
+
+def image_box_hit_test(
+    fitted_rect: Rect,
+    image_width: Int32,
+    image_height: Int32,
+    boxes: List[ImageOverlayBox],
+    point: Vec2,
+) -> Int64:
+    """Return the topmost overlay id containing `point`, or -1."""
+    for rev in range(len(boxes)):
+        var i = len(boxes) - 1 - rev
+        var r = image_pixel_to_screen_rect(
+            fitted_rect.copy(),
+            image_width,
+            image_height,
+            boxes[i].rect_px.copy(),
+        )
+        if r.contains(point):
+            return boxes[i].id
+    return Int64(-1)
+
+
+def _overlay_color(base: Color, alpha: UInt8) -> Color:
+    return Color(base.r, base.g, base.b, alpha)
+
+
+def _draw_overlay_box(mut ctx: Context, rect: Rect, box: ImageOverlayBox):
+    if rect.w <= 0.0 or rect.h <= 0.0:
+        return
+    var fill_a = UInt8(34)
+    var border_a = UInt8(220)
+    if box.selected:
+        fill_a = UInt8(54)
+        border_a = UInt8(255)
+    ctx.draw_rect(rect.copy(), _overlay_color(box.color, fill_a))
+    var border = _overlay_color(box.color, border_a)
+    var line = Float32(1.0)
+    if box.selected:
+        line = Float32(2.0)
+    ctx.draw_rect(Rect(rect.x, rect.y, rect.w, line), border.copy())
+    ctx.draw_rect(Rect(rect.x, rect.y + rect.h - line, rect.w, line), border.copy())
+    ctx.draw_rect(Rect(rect.x, rect.y, line, rect.h), border.copy())
+    ctx.draw_rect(Rect(rect.x + rect.w - line, rect.y, line, rect.h), border.copy())
+    if ctx.theme.font_id == UInt32(0) or box.label.byte_length() == 0:
+        return
+    var size = ctx.theme.font_size_pt - 7
+    if size < 9:
+        size = 9
+    var label_w = Float32(box.label.byte_length()) * Float32(size) * 0.58 + Float32(10.0)
+    if label_w > rect.w:
+        label_w = rect.w
+    var label_h = Float32(size) + Float32(6.0)
+    if label_h > rect.h:
+        label_h = rect.h
+    var label_rect = Rect(rect.x, rect.y, label_w, label_h)
+    ctx.draw_rect(label_rect.copy(), Color(8, 8, 10, 212))
+    ctx.draw_text(
+        ctx.theme.font_id,
+        size,
+        Vec2(label_rect.x + Float32(4.0), label_rect.y + label_rect.h - Float32(5.0)),
+        _overlay_color(box.color, UInt8(255)),
+        box.label.copy(),
+    )
+
+
+def draw_image_box_overlays(
+    mut ctx: Context,
+    fitted_rect: Rect,
+    image_width: Int32,
+    image_height: Int32,
+    boxes: List[ImageOverlayBox],
+):
+    """Draw pixel-space annotation boxes over an already fitted image rect."""
+    for i in range(len(boxes)):
+        var screen_rect = image_pixel_to_screen_rect(
+            fitted_rect.copy(),
+            image_width,
+            image_height,
+            boxes[i].rect_px.copy(),
+        )
+        _draw_overlay_box(ctx, screen_rect.copy(), boxes[i].copy())
+
+
+def image_rect_fit_boxes(
+    mut ctx: Context,
+    rect: Rect,
+    texture_id: UInt32,
+    image_width: Int32,
+    image_height: Int32,
+    boxes: List[ImageOverlayBox],
+    tint: Color,
+) -> Rect:
+    """Draw an aspect-fit image plus pixel-space overlay boxes.
+
+    Returns the fitted image rect so callers can convert pointer positions
+    into pixel coordinates for editing.
+    """
+    var fitted = image_fit_rect(rect.copy(), image_width, image_height)
+    ctx.draw_image(fitted.copy(), texture_id, tint.copy())
+    draw_image_box_overlays(ctx, fitted.copy(), image_width, image_height, boxes)
+    return fitted^
 
 
 def _draw_preview_border(mut ctx: Context, slot: Rect, color: Color):
@@ -336,6 +517,26 @@ def media_preview_card(
     )
 
 
+def video_preview_card(
+    mut ctx: Context,
+    texture_id: UInt32,
+    title: String,
+    subtitle: String,
+    image_width: Int32 = 0,
+    image_height: Int32 = 0,
+):
+    """Framed video thumbnail card."""
+    media_preview_card(
+        ctx,
+        texture_id,
+        title,
+        subtitle,
+        image_width,
+        image_height,
+        True,
+    )
+
+
 def image_preview_button(
     mut ctx: Context,
     id_str: String,
@@ -363,6 +564,51 @@ def image_preview_button(
         is_video,
     )
     return (flags & CTRL_RELEASED) != 0 or (flags & CTRL_PRESSED) != 0
+
+
+def media_preview_button(
+    mut ctx: Context,
+    id_str: String,
+    texture_id: UInt32,
+    title: String,
+    subtitle: String,
+    image_width: Int32 = 0,
+    image_height: Int32 = 0,
+    is_video: Bool = False,
+) -> Bool:
+    """Clickable media preview card. Returns True on click."""
+    return image_preview_button(
+        ctx,
+        id_str,
+        texture_id,
+        title,
+        subtitle,
+        image_width,
+        image_height,
+        is_video,
+    )
+
+
+def video_preview_button(
+    mut ctx: Context,
+    id_str: String,
+    texture_id: UInt32,
+    title: String,
+    subtitle: String,
+    image_width: Int32 = 0,
+    image_height: Int32 = 0,
+) -> Bool:
+    """Clickable video thumbnail card. Returns True on click."""
+    return media_preview_button(
+        ctx,
+        id_str,
+        texture_id,
+        title,
+        subtitle,
+        image_width,
+        image_height,
+        True,
+    )
 
 
 def media_virtual_grid(
@@ -726,3 +972,31 @@ def image_lightbox(
         image_width,
         image_height,
     ) == MEDIA_LIGHTBOX_CLOSE
+
+
+def video_lightbox(
+    mut ctx: Context,
+    id_str: String,
+    texture_id: UInt32,
+    title: String,
+    subtitle: String,
+    media_path: String,
+    image_width: Int32 = 0,
+    image_height: Int32 = 0,
+) -> Int32:
+    """Full-window video thumbnail overlay.
+
+    Returns MEDIA_LIGHTBOX_CLOSE when the overlay should close and
+    MEDIA_LIGHTBOX_PLAY when the caller should open/play the media path.
+    """
+    return media_lightbox(
+        ctx,
+        id_str,
+        texture_id,
+        title,
+        subtitle,
+        media_path,
+        True,
+        image_width,
+        image_height,
+    )

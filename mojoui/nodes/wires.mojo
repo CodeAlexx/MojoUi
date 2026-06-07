@@ -4,21 +4,19 @@ The NodeCanvas widget (c39) calls `draw_wire(ctx, from_pos, to_pos, color)`
 for each visible edge. Wire shape mirrors EriGui's `draw_bezier`
 (`erigui-widgets/src/node_graph/mod.rs:980-1022`): cubic bezier with
 horizontal tangents at the endpoints, control points offset by
-`dx * 0.35`, 24 segments. The same conventions appear in
+  `dx * 0.35`, 36 segments. The same conventions appear in
 `egui_node_graph` and ComfyUI, so a saved workflow's wires render
 identically wherever they are opened.
 
-M2.5 simplification (deliberate, documented for M3):
+Current stroke path:
 
-- Each segment is drawn as one axis-aligned bounding rect rather than a
-  proper stroked line. Thin near-horizontal segments look like horizontal
-  strips; thin near-vertical segments look like vertical strips; diagonal
-  segments get a small box. The 24-segment tessellation visually masks
-  the stub for the smooth EriGui-style S-curves. M3's tessellator swaps
-  in real rotated-quad strokes with mitred joins and round caps.
+- Each segment is drawn as a rotated quad batched into one CMD_TRIANGLES
+  command, with slight overlap at joins and round end caps.
+- A low-alpha glow layer is drawn under the core stroke so selected and
+  typed wires read clearly on the dark canvas without square stair-steps.
 - No arrowhead at the `to` end (M3 adds; EriGui's arrowhead is a small
   triangle that the M3 tessellator's line-cap pipeline will subsume).
-- No alpha animation, no per-port glow, no port-type label/tooltip — all
+- No alpha animation, no per-port tooltip — all
   M3 / theme work.
 
 Coupling: this module knows NOTHING about `Edge`, `Graph`, or `Port`.
@@ -34,14 +32,22 @@ model=blue, vae=red, ...).
 from std.math import sqrt
 from mojoui.core.types import Vec2, Rect, Color
 from mojoui.core.context import Context
+from mojoui.render.backend import _pack_color_aabbggrr, _u32_to_f32_bits
+from mojoui.render.tessellator import tess_circle
 
 
-# 24 segments per EriGui `draw_bezier` (mod.rs:980-1022); enough to mask
-# the bounding-rect stub for typical wire lengths.
-comptime WIRE_SEGMENTS: Int = 24
+# More samples than the original EriGui smoke path because MojoUI now uses
+# proper stroked geometry and large high-DPI canvases make jagged curves obvious.
+comptime WIRE_SEGMENTS: Int = 36
 
 # Default stroke thickness in pixels. M3 reads from theme.
-comptime WIRE_THICKNESS: Float32 = 2.0
+comptime WIRE_THICKNESS: Float32 = 3.0
+
+comptime WIRE_GLOW_EXTRA: Float32 = 7.0
+"""Extra width for the translucent underlay."""
+
+comptime WIRE_JOIN_OVERLAP: Float32 = 1.25
+"""Pixels to extend each segment along its tangent so adjacent quads overlap."""
 
 # Control-point offset fraction along dx (EriGui's hardcoded 0.35).
 # 0.0 = straight line; 1.0 = control points reach the opposite endpoint.
@@ -97,32 +103,19 @@ def draw_wire(
     `to_pos` (input port) using `WIRE_THICKNESS` and the EriGui-style
     horizontal-tangent control-point layout.
 
-    Emits exactly `WIRE_SEGMENTS` (24) `CMD_RECT` commands — one per
-    segment of the polyline tessellation. The canvas widget calls
-    `draw_wire` once per edge; the renderer adapter walks the resulting
-    `CMD_RECT` records as normal axis-aligned rects.
+    Emits stroked triangle geometry rather than axis-aligned segment
+    boxes. The canvas widget calls `draw_wire` once per edge; the renderer
+    adapter walks the resulting `CMD_TRIANGLES` records like the rest of
+    the tessellated UI primitives.
     """
-    var dx = to_pos.x - from_pos.x
-    # Horizontal-tangent control points: P1 sits dx*frac right of P0,
-    # P2 sits dx*frac left of P3. When dx < 0 (wire flows right-to-left,
-    # e.g. a node placed to the left of its consumer) the offset flips
-    # sign too, which keeps the curve smooth — EriGui's behaviour.
-    var ctrl_dx = dx * WIRE_TANGENT_FRAC
-    var p0 = from_pos.copy()
-    var p1 = Vec2(from_pos.x + ctrl_dx, from_pos.y)
-    var p2 = Vec2(to_pos.x - ctrl_dx, to_pos.y)
-    var p3 = to_pos.copy()
-
-    var prev = p0.copy()
-    for i in range(1, WIRE_SEGMENTS + 1):
-        var t = Float32(i) / Float32(WIRE_SEGMENTS)
-        var cur = cubic_bezier_point(
-            p0.copy(), p1.copy(), p2.copy(), p3.copy(), t
-        )
-        _draw_thick_line_segment(
-            ctx, prev.copy(), cur.copy(), color.copy(), WIRE_THICKNESS
-        )
-        prev = cur.copy()
+    _draw_wire_stroked(
+        ctx,
+        from_pos.copy(),
+        to_pos.copy(),
+        color.copy(),
+        WIRE_THICKNESS,
+        True,
+    )
 
 
 def draw_wire_thick(
@@ -137,67 +130,130 @@ def draw_wire_thick(
     pointer-over). M3 will route through the theme rather than expose
     thickness as a parameter.
     """
+    _draw_wire_stroked(
+        ctx,
+        from_pos.copy(),
+        to_pos.copy(),
+        color.copy(),
+        thickness,
+        True,
+    )
+
+
+def _push_wire_vert(
+    mut verts: List[Float32], x: Float32, y: Float32, color_bits: Float32
+):
+    verts.append(x)
+    verts.append(y)
+    verts.append(Float32(0.0))
+    verts.append(Float32(0.0))
+    verts.append(color_bits)
+
+
+def _push_wire_quad_indices(mut indices: List[UInt16], base: UInt16):
+    indices.append(base)
+    indices.append(base + UInt16(1))
+    indices.append(base + UInt16(2))
+    indices.append(base)
+    indices.append(base + UInt16(2))
+    indices.append(base + UInt16(3))
+
+
+def _emit_stroked_segment_batch(
+    mut ctx: Context,
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    p3: Vec2,
+    color: Color,
+    thickness: Float32,
+):
+    """Batch the bezier polyline into rotated segment quads.
+
+    The slight tangent overlap hides cracks between adjacent quads without
+    needing a full miter-join pipeline.
+    """
+    if thickness <= Float32(0.0):
+        return
+    var packed = _pack_color_aabbggrr(color)
+    var color_bits = _u32_to_f32_bits(packed)
+    var verts = List[Float32]()
+    var indices = List[UInt16]()
+    var half = thickness * Float32(0.5)
+    var prev = p0.copy()
+    var emitted = 0
+    for i in range(1, WIRE_SEGMENTS + 1):
+        var t = Float32(i) / Float32(WIRE_SEGMENTS)
+        var cur = cubic_bezier_point(
+            p0.copy(), p1.copy(), p2.copy(), p3.copy(), t
+        )
+        var dx = cur.x - prev.x
+        var dy = cur.y - prev.y
+        var len_seg = sqrt(dx * dx + dy * dy)
+        if len_seg > Float32(1.0e-4):
+            var ux = dx / len_seg
+            var uy = dy / len_seg
+            var nx = -uy * half
+            var ny = ux * half
+            var ox = ux * WIRE_JOIN_OVERLAP
+            var oy = uy * WIRE_JOIN_OVERLAP
+            var ax = prev.x - ox
+            var ay = prev.y - oy
+            var bx = cur.x + ox
+            var by = cur.y + oy
+            _push_wire_vert(verts, ax + nx, ay + ny, color_bits)
+            _push_wire_vert(verts, bx + nx, by + ny, color_bits)
+            _push_wire_vert(verts, bx - nx, by - ny, color_bits)
+            _push_wire_vert(verts, ax - nx, ay - ny, color_bits)
+            _push_wire_quad_indices(indices, UInt16(emitted * 4))
+            emitted = emitted + 1
+        prev = cur.copy()
+    if emitted > 0:
+        _ = ctx.commands.emit_triangles(verts^, indices^, UInt32(0))
+
+
+def _draw_wire_stroked(
+    mut ctx: Context,
+    from_pos: Vec2,
+    to_pos: Vec2,
+    color: Color,
+    thickness: Float32,
+    glow: Bool,
+):
     var dx = to_pos.x - from_pos.x
+    # Horizontal-tangent control points: P1 sits dx*frac right of P0,
+    # P2 sits dx*frac left of P3. When dx < 0 (wire flows right-to-left,
+    # e.g. a node placed to the left of its consumer) the offset flips
+    # sign too, which keeps the curve smooth — EriGui's behaviour.
     var ctrl_dx = dx * WIRE_TANGENT_FRAC
     var p0 = from_pos.copy()
     var p1 = Vec2(from_pos.x + ctrl_dx, from_pos.y)
     var p2 = Vec2(to_pos.x - ctrl_dx, to_pos.y)
     var p3 = to_pos.copy()
 
-    var prev = p0.copy()
-    for i in range(1, WIRE_SEGMENTS + 1):
-        var t = Float32(i) / Float32(WIRE_SEGMENTS)
-        var cur = cubic_bezier_point(
-            p0.copy(), p1.copy(), p2.copy(), p3.copy(), t
+    if glow:
+        var glow_color = color.with_alpha(UInt8(44))
+        _emit_stroked_segment_batch(
+            ctx,
+            p0.copy(),
+            p1.copy(),
+            p2.copy(),
+            p3.copy(),
+            glow_color^,
+            thickness + WIRE_GLOW_EXTRA,
         )
-        _draw_thick_line_segment(
-            ctx, prev.copy(), cur.copy(), color.copy(), thickness
-        )
-        prev = cur.copy()
-
-
-def _draw_thick_line_segment(
-    mut ctx: Context, a: Vec2, b: Vec2, color: Color, thickness: Float32
-):
-    """Draw one polyline segment as an axis-aligned bounding rect with
-    `thickness`-pixel padding along the smaller axis.
-
-    M2.5 stub: cheap, visually adequate at 24 segments for the smooth
-    EriGui-style S-curves the bezier produces. Diagonal segments paint
-    a small box (looks like a fat dot in isolation but the segment chain
-    masks it). M3's tessellator replaces with proper rotated-quad
-    strokes + mitred joins + round caps.
-    """
-    # Bounding rect of (a, b) — sorted x and y.
-    var x0 = a.x
-    var x1 = b.x
-    if x0 > x1:
-        var tmp = x0
-        x0 = x1
-        x1 = tmp
-    var y0 = a.y
-    var y1 = b.y
-    if y0 > y1:
-        var tmp = y0
-        y0 = y1
-        y1 = tmp
-
-    # Inflate by thickness/2 on the smaller axis so the rect always has
-    # visible width AND height. A purely horizontal segment (dy == 0)
-    # would otherwise be 0-height; the pad gives it `thickness` height.
-    var dx_seg = x1 - x0
-    var dy_seg = y1 - y0
-    if dx_seg < thickness:
-        var pad = (thickness - dx_seg) * Float32(0.5)
-        x0 = x0 - pad
-        x1 = x1 + pad
-    if dy_seg < thickness:
-        var pad = (thickness - dy_seg) * Float32(0.5)
-        y0 = y0 - pad
-        y1 = y1 + pad
-
-    var rect = Rect(x0, y0, x1 - x0, y1 - y0)
-    ctx.draw_rect(rect^, color.copy())
+    _emit_stroked_segment_batch(
+        ctx,
+        p0.copy(),
+        p1.copy(),
+        p2.copy(),
+        p3.copy(),
+        color.copy(),
+        thickness,
+    )
+    var cap_r = thickness * Float32(0.5)
+    tess_circle(ctx, from_pos.copy(), cap_r, color.copy(), 12)
+    tess_circle(ctx, to_pos.copy(), cap_r, color.copy(), 12)
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +327,7 @@ def wire_distance_to_point(from_pos: Vec2, to_pos: Vec2, p: Vec2) -> Float32:
 def wire_color_for_type(value_type_tag: Int32) -> Color:
     """Return a per-`NodeValueType` wire color matching the common
     ComfyUI palette. Tags align with `mojoui/nodes/port.mojo`'s
-    `NVT_*` constants (0..10). Unknown tags fall back to the EriGui
+    `NVT_*` constants (0..12). Unknown tags fall back to the EriGui
     default amber `#F59E0B`.
 
     M3 sources these from a theme dict so palette tweaks land in one
@@ -300,5 +356,9 @@ def wire_color_for_type(value_type_tag: Int32) -> Color:
         return Color(UInt8(150), UInt8(150), UInt8(100), UInt8(255))
     elif value_type_tag == Int32(10):    # NVT_BOOL
         return Color(UInt8(150), UInt8(100), UInt8(150), UInt8(255))
+    elif value_type_tag == Int32(11):    # NVT_VIDEO
+        return Color(UInt8(90), UInt8(170), UInt8(240), UInt8(255))
+    elif value_type_tag == Int32(12):    # NVT_BBOX
+        return Color(UInt8(255), UInt8(120), UInt8(210), UInt8(255))
     # Default: EriGui's hardcoded amber #F59E0B.
     return Color(UInt8(245), UInt8(158), UInt8(11), UInt8(255))

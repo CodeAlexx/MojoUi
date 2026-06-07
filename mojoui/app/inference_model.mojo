@@ -266,20 +266,20 @@ struct InferenceState(Movable):
         self.task_open = False
 
         var models = List[String]()
+        models.append(String("Klein 9B"))
+        models.append(String("Qwen-Image"))
         models.append(String("Z-Image (base)"))
         models.append(String("Z-Image (turbo)"))
         models.append(String("FLUX Dev"))
         models.append(String("Chroma"))
         models.append(String("Klein 4B"))
-        models.append(String("Klein 9B"))
         models.append(String("SD 3.5"))
-        models.append(String("Qwen-Image"))
         models.append(String("ERNIE"))
         models.append(String("Anima"))
         models.append(String("SDXL"))
         models.append(String("SD 1.5"))
         self.model_options = models^
-        self.model_index = 2  # FLUX Dev (mirrors image_default)
+        self.model_index = 0  # Klein 9B first; SerenityUI graph backend default.
         self.model_open = False
 
         var vaes = List[String]()

@@ -216,6 +216,21 @@ struct Node(Copyable, Movable):
     sorted-key JSON object so saved workflows are VCS-diff stable (c34
     enforces sort)."""
 
+    var muted: Bool
+    """Canvas/runtime hint: muted nodes should be skipped by app-level
+    execution when supported. Stored on the node so future apps can share
+    the same selection/menu affordances without side tables."""
+
+    var bypassed: Bool
+    """Canvas/runtime hint: bypass this node when the app can wire through
+    compatible inputs/outputs. MojoUI only visualizes/toggles the flag."""
+
+    var collapsed: Bool
+    """Canvas hint: draw the compact title-only form."""
+
+    var pinned: Bool
+    """Canvas hint: keep the node fixed during drag/nudge/delete actions."""
+
     def __init__(out self, id: RetainedId, type_id: String):
         """Construct with id + type_id. Title defaults to `type_id`,
         position to origin, size to 200×80, ports/fields empty.
@@ -228,6 +243,10 @@ struct Node(Copyable, Movable):
         self.inputs = List[PortRef]()
         self.outputs = List[PortRef]()
         self.fields = Dict[String, FieldValue]()
+        self.muted = False
+        self.bypassed = False
+        self.collapsed = False
+        self.pinned = False
 
     def with_position(mut self, pos: Vec2):
         """Mutator — set the canvas position."""

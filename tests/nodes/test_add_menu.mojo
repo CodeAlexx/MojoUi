@@ -137,14 +137,14 @@ def test_contains_substr_matches_and_misses() raises:
 
 
 def test_filter_empty_returns_all_builtins() raises:
-    """Empty search returns every registered type_id (5 builtins, in
+    """Empty search returns every registered type_id (56 builtins, in
     insertion order)."""
     var reg = NodeRegistry()
     register_builtins(reg)
     var matches = _filter_registry(reg, String(""))
-    if len(matches) != 5:
+    if len(matches) != 56:
         raise Error(
-            "empty filter on 5 builtins should return 5 entries; got "
+            "empty filter on 56 builtins should return 56 entries; got "
             + String(len(matches))
         )
     # First is the first registered (insertion order; register_builtins
@@ -152,6 +152,26 @@ def test_filter_empty_returns_all_builtins() raises:
     if matches[0] != String("core/load_checkpoint"):
         raise Error("matches[0] should be 'core/load_checkpoint'")
     print("  PASS test_filter_empty_returns_all_builtins")
+
+
+def test_filter_serenity_prompt_builder() raises:
+    """Filter 'SerenityUI' includes the visual Ideogram prompt builder."""
+    var reg = NodeRegistry()
+    register_builtins(reg)
+    var matches = _filter_registry(reg, String("SerenityUI"))
+    if len(matches) < 1:
+        raise Error(
+            "filter 'SerenityUI' should return entries; got "
+            + String(len(matches))
+        )
+    var found = False
+    for i in range(len(matches)):
+        if matches[i] == String("core/ideogram4_prompt_builder"):
+            found = True
+            break
+    if not found:
+        raise Error("SerenityUI filter should include core/ideogram4_prompt_builder")
+    print("  PASS test_filter_serenity_prompt_builder")
 
 
 def test_filter_k_sampler_case_insensitive() raises:
@@ -176,10 +196,10 @@ def test_filter_k_sampler_case_insensitive() raises:
         raise Error("lower-case 'k-sampler' should also match 1")
     if matches2[0] != String("core/k_sampler"):
         raise Error("lower-case should match same type_id")
-    # Partial substring also matches.
+    # Partial substring also matches the broader Comfy sampler catalog.
     var matches3 = _filter_registry(reg, String("Sampler"))
-    if len(matches3) != 1:
-        raise Error("partial 'Sampler' should match 1")
+    if len(matches3) < 6:
+        raise Error("partial 'Sampler' should match Comfy sampler entries")
     print("  PASS test_filter_k_sampler_case_insensitive")
 
 
@@ -277,8 +297,9 @@ def main() raises:
     test_lower_hello()
     test_contains_substr_matches_and_misses()
     test_filter_empty_returns_all_builtins()
+    test_filter_serenity_prompt_builder()
     test_filter_k_sampler_case_insensitive()
     test_filter_no_match_returns_empty()
     test_add_menu_closed_returns_false_no_commands()
     test_add_menu_open_compile_only()
-    print("PASS: all 10 smoke tests")
+    print("PASS: all 11 smoke tests")

@@ -1,0 +1,6 @@
+[submodule "vendor/ComfyUI-KJNodes"]
+	path = vendor/ComfyUI-KJNodes
+	url = https://github.com/kijai/ComfyUI-KJNodes.git
+[submodule "vendor/rgthree-comfy"]
+	path = vendor/rgthree-comfy
+	url = https://github.com/rgthree/rgthree-comfy.git

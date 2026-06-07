@@ -19,14 +19,17 @@ Design invariants from `EriGui node audit notes`:
 
 `NodeValueType` is an `Int32`-backed compile-time-tagged enum (current beta
 Mojo lacks `@value enum`; we follow the c11/c14 convention of `comptime
-NAME: T = N` constants over `Int32` instead). The eleven variants mirror
-EriGui's `NodeValueType` (`erigui-nodes/src/lib.rs:70-78`):
+NAME: T = N` constants over `Int32` instead). The thirteen variants mirror
+EriGui's base `NodeValueType` shape (`erigui-nodes/src/lib.rs:70-78`) plus
+MojoUI's reusable media and region-selection extensions:
 
   - **Diffusion-domain types** (7): LATENT, IMAGE, CONDITIONING, MODEL, VAE,
     CLIP, LORA.
   - **Generic primitives** (4): NUMBER, TEXT, SEED, BOOL.
+  - **Media types** (1): VIDEO.
+  - **Region primitives** (1): BBOX.
 
-`NVT_COUNT` (= 11) is the sentinel returned by `node_value_type_from_name`
+`NVT_COUNT` (= 13) is the sentinel returned by `node_value_type_from_name`
 for an unknown name string — callers should treat it as the "unrecognised
 type" error case.
 
@@ -53,17 +56,19 @@ comptime NVT_NUMBER: NodeValueType = 7
 comptime NVT_TEXT: NodeValueType = 8
 comptime NVT_SEED: NodeValueType = 9
 comptime NVT_BOOL: NodeValueType = 10
+comptime NVT_VIDEO: NodeValueType = 11
+comptime NVT_BBOX: NodeValueType = 12
 
 # Sentinel — one past the last valid variant. Returned by
 # `node_value_type_from_name` for an unrecognised name string. Also used by
-# tests to assert the variant set is exactly 11 entries wide.
-comptime NVT_COUNT: NodeValueType = 11
+# tests to assert the variant set is exactly 13 entries wide.
+comptime NVT_COUNT: NodeValueType = 13
 
 
 def node_value_type_name(t: NodeValueType) -> String:
     """Returns the canonical lowercase string name used for JSON serde.
 
-    The 11 strings here MUST stay stable across MojoUI versions — they end up
+    The 13 strings here MUST stay stable across MojoUI versions — they end up
     in workflow files on disk, and changing a name silently breaks every saved
     graph that referenced the old spelling. Mirrors EriGui's
     `serde(rename_all = "snake_case")` derivation on `NodeValueType` so a
@@ -95,11 +100,15 @@ def node_value_type_name(t: NodeValueType) -> String:
         return String("seed")
     elif t == NVT_BOOL:
         return String("bool")
+    elif t == NVT_VIDEO:
+        return String("video")
+    elif t == NVT_BBOX:
+        return String("bbox")
     return String("unknown")
 
 
 def node_value_type_from_name(name: String) -> NodeValueType:
-    """Inverse of `node_value_type_name`. Returns `NVT_COUNT` (11) for any
+    """Inverse of `node_value_type_name`. Returns `NVT_COUNT` (13) for any
     unrecognised name — callers treat that as the "unknown type" sentinel.
     """
     if name == String("latent"):
@@ -124,6 +133,10 @@ def node_value_type_from_name(name: String) -> NodeValueType:
         return NVT_SEED
     elif name == String("bool"):
         return NVT_BOOL
+    elif name == String("video"):
+        return NVT_VIDEO
+    elif name == String("bbox"):
+        return NVT_BBOX
     return NVT_COUNT
 
 

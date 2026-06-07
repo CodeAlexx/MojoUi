@@ -5,11 +5,11 @@ Verifies:
 2. `cubic_bezier_point(p0..p3, 1.0)` == p3 exactly.
 3. `cubic_bezier_point(p0..p3, 0.5)` == midpoint formula B(0.5) =
    0.125*P0 + 0.375*P1 + 0.375*P2 + 0.125*P3.
-4. `draw_wire` from (10,10) to (200,200) emits exactly `WIRE_SEGMENTS`
-   (24) `CMD_RECT` commands.
+4. `draw_wire` from (10,10) to (200,200) emits stroked CMD_TRIANGLES
+   batches with a segment batch containing `WIRE_SEGMENTS` quads.
 5. `draw_wire_thick(thickness=8.0)` produces visibly thicker segment
-   rects than `draw_wire` (thickness=2.0).
-6. `wire_color_for_type(0..10)` returns 11 pairwise distinct colors.
+   geometry than `draw_wire`.
+6. `wire_color_for_type(0..12)` returns 13 pairwise distinct colors.
 7. `wire_color_for_type(99)` returns the EriGui default amber.
 
 JIT note: the bezier math + wire drawing path is pure Mojo (no FFI in
@@ -17,9 +17,10 @@ the call graph), so `Context.begin_frame_no_input` is enough — no
 runtime-False JIT guard required.
 """
 
+from std.math import sqrt
 from mojoui.core.types import Vec2, Rect, Color
 from mojoui.core.context import Context
-from mojoui.core.commands import CMD_RECT, read_cmd_rect
+from mojoui.core.commands import CMD_TRIANGLES, read_cmd_triangles
 from mojoui.nodes.wires import (
     WIRE_SEGMENTS,
     WIRE_THICKNESS,
@@ -47,13 +48,13 @@ def _approx_eq(a: Float32, b: Float32) -> Bool:
     return _abs(a - b) <= Float32(1.0e-4)
 
 
-def _count_rects(ctx: Context) -> Int:
-    """Walk the command buffer and count CMD_RECT commands."""
+def _count_triangle_batches(ctx: Context) -> Int:
+    """Walk the command buffer and count CMD_TRIANGLES commands."""
     var n = 0
     var off: Int32 = 0
     var total = Int32(ctx.commands.byte_count())
     while off < total:
-        if Int32(ctx.commands.kind_at(off)) == Int32(CMD_RECT):
+        if Int32(ctx.commands.kind_at(off)) == Int32(CMD_TRIANGLES):
             n += 1
         var step = ctx.commands.size_at(off)
         if step <= 0:
@@ -62,27 +63,31 @@ def _count_rects(ctx: Context) -> Int:
     return n
 
 
-def _max_rect_min_extent(ctx: Context) raises -> Float32:
-    """Walk all CMD_RECT records and return the maximum of `min(w, h)`
-    across them. With the bounding-rect-pad-by-thickness scheme, the
-    smallest axis of every segment rect equals `thickness`; this lets
-    the thickness test distinguish 2.0 vs 8.0 stroke widths."""
-    var best = Float32(0.0)
+def _wire_core_width(ctx: Context) raises -> Float32:
+    """Return the width of the core segment batch.
+
+    `draw_wire` emits segment glow, segment core, then two round caps. The
+    segment batches are the only records with `WIRE_SEGMENTS * 4` verts; the
+    second such batch is the visible core stroke. The first quad's two
+    opposite side vertices are separated by the requested stroke thickness.
+    """
     var off: Int32 = 0
     var total = Int32(ctx.commands.byte_count())
+    var seen_segment_batches = 0
     while off < total:
-        if Int32(ctx.commands.kind_at(off)) == Int32(CMD_RECT):
-            var rc = read_cmd_rect(ctx.commands, off)
-            var m = rc.rect.w
-            if rc.rect.h < m:
-                m = rc.rect.h
-            if m > best:
-                best = m
+        if Int32(ctx.commands.kind_at(off)) == Int32(CMD_TRIANGLES):
+            var tri = read_cmd_triangles(ctx.commands, off)
+            if tri.n_verts == Int32(WIRE_SEGMENTS * 4):
+                seen_segment_batches = seen_segment_batches + 1
+                if seen_segment_batches == 2:
+                    var dx = tri.verts[0] - tri.verts[15]
+                    var dy = tri.verts[1] - tri.verts[16]
+                    return sqrt(dx * dx + dy * dy)
         var step = ctx.commands.size_at(off)
         if step <= 0:
             break
         off += step
-    return best
+    return Float32(0.0)
 
 
 # ----------------------------------------------------------------------------
@@ -162,8 +167,8 @@ def test_bezier_at_t05_matches_midpoint_formula() raises:
 
 
 def test_draw_wire_emits_wire_segments_rects() raises:
-    """Test 4: `draw_wire` from (10,10) to (200,200) emits exactly
-    `WIRE_SEGMENTS` (24) `CMD_RECT` commands."""
+    """Test 4: `draw_wire` emits stroked triangle batches and a segment
+    core width matching `WIRE_THICKNESS`."""
     var ctx = Context()
     ctx.begin_frame_no_input(
         Vec2(Float32(800.0), Float32(600.0)),
@@ -177,30 +182,30 @@ def test_draw_wire_emits_wire_segments_rects() raises:
         Vec2(Float32(200.0), Float32(200.0)),
         Color(UInt8(255), UInt8(255), UInt8(255), UInt8(255)),
     )
-    var n = _count_rects(ctx)
-    var want = Int(WIRE_SEGMENTS)
-    if n != want:
+    var n = _count_triangle_batches(ctx)
+    if n < 4:
         _fail(
-            "draw_wire should emit "
-            + String(want)
-            + " CMD_RECT commands, got "
+            "draw_wire should emit segment+cap CMD_TRIANGLES batches, got "
             + String(n)
+        )
+    var core_width = _wire_core_width(ctx)
+    if not _approx_eq(core_width, WIRE_THICKNESS):
+        _fail(
+            "draw_wire core width expected "
+            + String(WIRE_THICKNESS)
+            + ", got "
+            + String(core_width)
         )
     print(
         "PASS: test_draw_wire_emits_wire_segments_rects ("
         + String(n)
-        + " rects)"
+        + " triangle batches)"
     )
 
 
 def test_draw_wire_thick_respects_thickness() raises:
     """Test 5: `draw_wire_thick(thickness=8.0)` produces visibly thicker
-    rects than `draw_wire` (thickness=2.0).
-
-    The bounding-rect-pad-by-thickness scheme guarantees the smallest
-    axis of every segment rect is at least `thickness` pixels — so the
-    maximum across segments of `min(w, h)` is `>= thickness`.
-    """
+    segment geometry than `draw_wire`."""
     var ctx_thin = Context()
     ctx_thin.begin_frame_no_input(
         Vec2(Float32(800.0), Float32(600.0)),
@@ -214,7 +219,7 @@ def test_draw_wire_thick_respects_thickness() raises:
         Vec2(Float32(200.0), Float32(200.0)),
         Color(UInt8(255), UInt8(255), UInt8(255), UInt8(255)),
     )
-    var thin_max = _max_rect_min_extent(ctx_thin)
+    var thin_width = _wire_core_width(ctx_thin)
 
     var ctx_thick = Context()
     ctx_thick.begin_frame_no_input(
@@ -230,42 +235,42 @@ def test_draw_wire_thick_respects_thickness() raises:
         Color(UInt8(255), UInt8(255), UInt8(255), UInt8(255)),
         Float32(8.0),
     )
-    var thick_max = _max_rect_min_extent(ctx_thick)
+    var thick_width = _wire_core_width(ctx_thick)
 
-    if not (thick_max > thin_max):
+    if not (thick_width > thin_width):
         _fail(
-            "thick stroke (max min-extent="
-            + String(thick_max)
-            + ") should exceed thin stroke (max min-extent="
-            + String(thin_max)
+            "thick stroke width="
+            + String(thick_width)
+            + " should exceed thin stroke width="
+            + String(thin_width)
             + ")"
         )
 
     # Also verify the thick path reached the requested thickness floor.
-    if thick_max + Float32(1.0e-3) < Float32(8.0):
+    if thick_width + Float32(1.0e-3) < Float32(8.0):
         _fail(
-            "thick max min-extent should reach 8.0, got "
-            + String(thick_max)
+            "thick core width should reach 8.0, got "
+            + String(thick_width)
         )
 
     print(
-        "PASS: test_draw_wire_thick_respects_thickness (thin="
-        + String(thin_max)
+        "PASS: test_draw_wire_thick_respects_thickness (thin_width="
+        + String(thin_width)
         + ", thick="
-        + String(thick_max)
+        + String(thick_width)
         + ")"
     )
 
 
 def test_wire_color_for_type_all_distinct() raises:
-    """Test 6: `wire_color_for_type(0..10)` returns 11 pairwise distinct
+    """Test 6: `wire_color_for_type(0..12)` returns 13 pairwise distinct
     Colors (covers every NVT_* tag)."""
     var colors = List[Color]()
-    for tag in range(0, 11):
+    for tag in range(0, 13):
         colors.append(wire_color_for_type(Int32(tag)))
 
-    for i in range(0, 11):
-        for j in range(i + 1, 11):
+    for i in range(0, 13):
+        for j in range(i + 1, 13):
             var ci = colors[i].copy()
             var cj = colors[j].copy()
             if (
@@ -282,7 +287,7 @@ def test_wire_color_for_type_all_distinct() raises:
                     + "): "
                     + String(ci)
                 )
-    print("PASS: test_wire_color_for_type_all_distinct (11 distinct)")
+    print("PASS: test_wire_color_for_type_all_distinct (13 distinct)")
 
 
 def test_wire_color_for_type_default_amber() raises:

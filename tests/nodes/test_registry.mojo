@@ -13,9 +13,12 @@ from mojoui.nodes.port import (
     NVT_LATENT,
     NVT_CONDITIONING,
     NVT_IMAGE,
+    NVT_VIDEO,
+    NVT_TEXT,
     NVT_NUMBER,
+    NVT_BBOX,
 )
-from mojoui.nodes.node import FieldValue, FK_NUMBER, FK_STRING, FK_INT
+from mojoui.nodes.node import FieldValue, FK_NUMBER, FK_STRING, FK_BOOL, FK_INT
 from mojoui.nodes.registry import (
     NodeTypeDef,
     NodeRegistry,
@@ -58,11 +61,11 @@ def test_register_one_typedef() raises:
 
 
 def test_register_builtins_count() raises:
-    """The `register_builtins` helper registers exactly 5 ComfyUI-core typedefs."""
+    """The `register_builtins` helper registers ComfyUI-shaped core/media/Ideogram typedefs."""
     var reg = NodeRegistry()
     register_builtins(reg)
-    if reg.size() != 5:
-        raise Error("expected 5 builtins, got " + String(reg.size()))
+    if reg.size() != 56:
+        raise Error("expected 56 builtins, got " + String(reg.size()))
     if not reg.is_registered(String("core/load_checkpoint")):
         raise Error("missing core/load_checkpoint")
     if not reg.is_registered(String("core/encode_prompt")):
@@ -73,16 +76,52 @@ def test_register_builtins_count() raises:
         raise Error("missing core/vae_decode")
     if not reg.is_registered(String("core/save_image")):
         raise Error("missing core/save_image")
+    if not reg.is_registered(String("core/load_image")):
+        raise Error("missing core/load_image")
+    if not reg.is_registered(String("core/image_to_prompt")):
+        raise Error("missing core/image_to_prompt")
+    if not reg.is_registered(String("core/preview_text")):
+        raise Error("missing core/preview_text")
+    if not reg.is_registered(String("core/load_video")):
+        raise Error("missing core/load_video")
+    if not reg.is_registered(String("core/preview_video")):
+        raise Error("missing core/preview_video")
+    if not reg.is_registered(String("core/save_video")):
+        raise Error("missing core/save_video")
+    if not reg.is_registered(String("core/ideogram4_prompt_builder")):
+        raise Error("missing core/ideogram4_prompt_builder")
+    if not reg.is_registered(String("core/ideogram4_magic_prompt")):
+        raise Error("missing core/ideogram4_magic_prompt")
+    if not reg.is_registered(String("core/ideogram4_generate")):
+        raise Error("missing core/ideogram4_generate")
+    if not reg.is_registered(String("comfy/KSampler")):
+        raise Error("missing comfy/KSampler")
+    if not reg.is_registered(String("comfy/KSamplerAdvanced")):
+        raise Error("missing comfy/KSamplerAdvanced")
+    if not reg.is_registered(String("comfy/LoraLoader")):
+        raise Error("missing comfy/LoraLoader")
+    if not reg.is_registered(String("comfy/CLIPTextEncode")):
+        raise Error("missing comfy/CLIPTextEncode")
+    if not reg.is_registered(String("comfy/EmptyLatentImage")):
+        raise Error("missing comfy/EmptyLatentImage")
+    if not reg.is_registered(String("comfy/PreviewAny")):
+        raise Error("missing comfy/PreviewAny")
+    if not reg.is_registered(String("rgthree/PowerLoraLoader")):
+        raise Error("missing rgthree/PowerLoraLoader")
+    if not reg.is_registered(String("kj/Ideogram4PromptBuilderKJ")):
+        raise Error("missing kj/Ideogram4PromptBuilderKJ")
+    if not reg.is_registered(String("swarm/SwarmKSampler")):
+        raise Error("missing swarm/SwarmKSampler")
     print("  PASS test_register_builtins_count")
 
 
 def test_by_category() raises:
-    """The `by_category` accessor groups the 5 builtins into 4 categories."""
+    """The `by_category` accessor groups the builtins into 7 categories."""
     var reg = NodeRegistry()
     register_builtins(reg)
     var groups = reg.by_category()
-    if len(groups) != 4:
-        raise Error("expected 4 categories, got " + String(len(groups)))
+    if len(groups) != 19:
+        raise Error("expected 19 categories, got " + String(len(groups)))
     if not (String("core") in groups):
         raise Error("missing 'core' category")
     if not (String("sampler") in groups):
@@ -91,16 +130,54 @@ def test_by_category() raises:
         raise Error("missing 'vae' category")
     if not (String("image") in groups):
         raise Error("missing 'image' category")
-    # core has 2 typedefs (load_checkpoint, encode_prompt), the other three
-    # have one each.
+    if not (String("text") in groups):
+        raise Error("missing 'text' category")
+    if not (String("video") in groups):
+        raise Error("missing 'video' category")
+    if not (String("ideogram") in groups):
+        raise Error("missing 'ideogram' category")
+    if not (String("comfy/loaders") in groups):
+        raise Error("missing 'comfy/loaders' category")
+    if not (String("comfy/sampling") in groups):
+        raise Error("missing 'comfy/sampling' category")
+    if not (String("comfy/image") in groups):
+        raise Error("missing 'comfy/image' category")
+    if not (String("comfy/controlnet") in groups):
+        raise Error("missing 'comfy/controlnet' category")
+    if not (String("rgthree") in groups):
+        raise Error("missing 'rgthree' category")
+    if not (String("kj") in groups):
+        raise Error("missing 'kj' category")
+    if not (String("swarm") in groups):
+        raise Error("missing 'swarm' category")
+    # core has 2 typedefs (load_checkpoint, encode_prompt), video has 3,
+    # ideogram has 3, and the other categories carry the compact starters.
     if len(groups[String("core")]) != 2:
         raise Error("core category should have 2 typedefs")
     if len(groups[String("sampler")]) != 1:
         raise Error("sampler category should have 1 typedef")
     if len(groups[String("vae")]) != 1:
         raise Error("vae category should have 1 typedef")
-    if len(groups[String("image")]) != 1:
-        raise Error("image category should have 1 typedef")
+    if len(groups[String("image")]) != 3:
+        raise Error("image category should have 3 typedefs")
+    if len(groups[String("text")]) != 1:
+        raise Error("text category should have 1 typedef")
+    if len(groups[String("video")]) != 3:
+        raise Error("video category should have 3 typedefs")
+    if len(groups[String("ideogram")]) != 3:
+        raise Error("ideogram category should have 3 typedefs")
+    if len(groups[String("comfy/loaders")]) != 5:
+        raise Error("comfy/loaders category should have 5 typedefs")
+    if len(groups[String("comfy/sampling")]) != 3:
+        raise Error("comfy/sampling category should have 3 typedefs")
+    if len(groups[String("comfy/image")]) != 8:
+        raise Error("comfy/image category should have 8 typedefs")
+    if len(groups[String("rgthree")]) != 3:
+        raise Error("rgthree category should have 3 typedefs")
+    if len(groups[String("kj")]) != 3:
+        raise Error("kj category should have 3 typedefs")
+    if len(groups[String("swarm")]) != 4:
+        raise Error("swarm category should have 4 typedefs")
     print("  PASS test_by_category")
 
 
@@ -335,6 +412,148 @@ def test_make_node_load_checkpoint() raises:
     print("  PASS test_make_node_load_checkpoint")
 
 
+def test_make_node_load_video() raises:
+    """Make_node for load_video exposes a typed VIDEO output and path fields."""
+    var reg = NodeRegistry()
+    register_builtins(reg)
+    var alloc = RetainedIdAllocator()
+    var id = alloc.alloc()
+    var node = reg.make_node(
+        String("core/load_video"), Vec2(10.0, 20.0), id
+    )
+    if len(node.inputs) != 0:
+        raise Error("load_video should have 0 inputs")
+    if len(node.outputs) != 1:
+        raise Error("load_video should have 1 output")
+    if node.outputs[0].name != String("video"):
+        raise Error("load_video output should be named video")
+    if node.outputs[0].value_type != NVT_VIDEO:
+        raise Error("load_video output should be NVT_VIDEO")
+    if node.field_count() != 3:
+        raise Error("load_video should have 3 fields")
+    var path = node.get_field(String("path"))
+    if path.kind != FK_STRING:
+        raise Error("load_video path field should be FK_STRING")
+    if path.str_val != String("input.mp4"):
+        raise Error("load_video path default should be input.mp4")
+    if node.size.x != 220.0 or node.size.y != 112.0:
+        raise Error("load_video should use its media preview size")
+    print("  PASS test_make_node_load_video")
+
+
+def test_make_node_load_image() raises:
+    """Load Image exposes image/mask outputs and a large preview-ready size."""
+    var reg = NodeRegistry()
+    register_builtins(reg)
+    var alloc = RetainedIdAllocator()
+    var id = alloc.alloc()
+    var node = reg.make_node(
+        String("core/load_image"), Vec2(10.0, 20.0), id
+    )
+    if len(node.inputs) != 0:
+        raise Error("load_image should have 0 inputs")
+    if len(node.outputs) != 2:
+        raise Error("load_image should have 2 outputs")
+    if node.outputs[0].name != String("image"):
+        raise Error("load_image output[0] should be image")
+    if node.outputs[0].value_type != NVT_IMAGE:
+        raise Error("load_image image output should be NVT_IMAGE")
+    if node.outputs[1].name != String("mask"):
+        raise Error("load_image output[1] should be mask")
+    if node.field_count() != 2:
+        raise Error("load_image should have 2 fields")
+    var path = node.get_field(String("path"))
+    if path.kind != FK_STRING or path.str_val != String("input.png"):
+        raise Error("load_image path should default to input.png")
+    if node.size.x != 240.0 or node.size.y != 260.0:
+        raise Error("load_image should use image preview size")
+    print("  PASS test_make_node_load_image")
+
+
+def test_make_node_ideogram_generate() raises:
+    """Ideogram generate exposes text input, image output, and mojodiffusion entry."""
+    var reg = NodeRegistry()
+    register_builtins(reg)
+    var alloc = RetainedIdAllocator()
+    var id = alloc.alloc()
+    var node = reg.make_node(
+        String("core/ideogram4_generate"), Vec2(10.0, 20.0), id
+    )
+    if len(node.inputs) != 1:
+        raise Error("ideogram generate should have 1 input")
+    if node.inputs[0].name != String("caption_json"):
+        raise Error("ideogram input should be caption_json")
+    if node.inputs[0].value_type != NVT_TEXT:
+        raise Error("ideogram input should be NVT_TEXT")
+    if len(node.outputs) != 1:
+        raise Error("ideogram generate should have 1 output")
+    if node.outputs[0].value_type != NVT_IMAGE:
+        raise Error("ideogram output should be NVT_IMAGE")
+    if node.field_count() != 8:
+        raise Error("ideogram generate should have 8 fields")
+    var steps = node.get_field(String("steps"))
+    if steps.kind != FK_INT or steps.int_val != Int64(48):
+        raise Error("ideogram steps should default to 48")
+    var magic = node.get_field(String("magic_prompt"))
+    if magic.kind != FK_BOOL or not magic.bool_val:
+        raise Error("ideogram magic_prompt should default true")
+    var entry = node.get_field(String("entry"))
+    if entry.kind != FK_STRING:
+        raise Error("ideogram entry should be a string")
+    if entry.str_val != String("/home/alex/mojodiffusion/serenitymojo/pipeline/ideogram4_generate.mojo"):
+        raise Error("ideogram entry should point at mojodiffusion generate")
+    if node.size.x != 260.0 or node.size.y != 152.0:
+        raise Error("ideogram generate should use extended node size")
+    print("  PASS test_make_node_ideogram_generate")
+
+
+def test_make_node_serenity_ideogram_prompt_builder() raises:
+    """SerenityUI prompt builder mirrors the image/bbox Ideogram editor node shape."""
+    var reg = NodeRegistry()
+    register_builtins(reg)
+    var alloc = RetainedIdAllocator()
+    var id = alloc.alloc()
+    var node = reg.make_node(
+        String("core/ideogram4_prompt_builder"), Vec2(10.0, 20.0), id
+    )
+    if node.title != String("SerenityUI Ideogram Prompt Builder"):
+        raise Error("prompt builder title should use SerenityUI display text")
+    if len(node.inputs) != 3:
+        raise Error("prompt builder should have 3 inputs")
+    if node.inputs[0].name != String("image") or node.inputs[0].value_type != NVT_IMAGE:
+        raise Error("prompt builder input[0] should be image")
+    if node.inputs[1].name != String("import_json") or node.inputs[1].value_type != NVT_TEXT:
+        raise Error("prompt builder input[1] should be import_json text")
+    if node.inputs[2].name != String("bboxes") or node.inputs[2].value_type != NVT_BBOX:
+        raise Error("prompt builder input[2] should be bbox")
+    if len(node.outputs) != 5:
+        raise Error("prompt builder should have 5 outputs")
+    if node.outputs[0].name != String("prompt") or node.outputs[0].value_type != NVT_TEXT:
+        raise Error("prompt builder output[0] should be prompt text")
+    if node.outputs[1].name != String("preview") or node.outputs[1].value_type != NVT_IMAGE:
+        raise Error("prompt builder output[1] should be preview image")
+    if node.outputs[2].name != String("bboxes") or node.outputs[2].value_type != NVT_BBOX:
+        raise Error("prompt builder output[2] should be bbox")
+    if node.outputs[3].name != String("width") or node.outputs[3].value_type != NVT_NUMBER:
+        raise Error("prompt builder output[3] should be width number")
+    if node.outputs[4].name != String("height") or node.outputs[4].value_type != NVT_NUMBER:
+        raise Error("prompt builder output[4] should be height number")
+    if node.field_count() != 14:
+        raise Error("prompt builder should have 14 fields")
+    var width = node.get_field(String("width"))
+    if width.kind != FK_INT or width.int_val != Int64(1024):
+        raise Error("prompt builder width should default to 1024")
+    var height = node.get_field(String("height"))
+    if height.kind != FK_INT or height.int_val != Int64(1024):
+        raise Error("prompt builder height should default to 1024")
+    var bg = node.get_field(String("bg_brightness"))
+    if bg.kind != FK_INT or bg.int_val != Int64(25):
+        raise Error("prompt builder bg_brightness should default to 25")
+    if node.size.x != 520.0 or node.size.y != 640.0:
+        raise Error("prompt builder should use the large editor node size")
+    print("  PASS test_make_node_serenity_ideogram_prompt_builder")
+
+
 def main() raises:
     print("Running registry tests...")
     test_empty_registry()
@@ -347,4 +566,8 @@ def main() raises:
     test_chainable_mutators()
     test_insertion_order_stable()
     test_make_node_load_checkpoint()
-    print("PASS: all 10 smoke tests")
+    test_make_node_load_video()
+    test_make_node_load_image()
+    test_make_node_serenity_ideogram_prompt_builder()
+    test_make_node_ideogram_generate()
+    print("PASS: all 14 smoke tests")

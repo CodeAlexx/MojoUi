@@ -22,12 +22,36 @@ from mojoui.core.commands import (
     CMD_IMAGE_SIZE,
     read_cmd_image,
 )
-from mojoui.widgets.image import image, image_tinted, image_rect, image_lightbox, image_preview_button
+from mojoui.widgets.image import (
+    image,
+    image_tinted,
+    image_rect,
+    image_fit_rect,
+    image_pixel_to_screen_rect,
+    image_screen_to_pixel_point,
+    image_box_hit_test,
+    image_rect_fit_boxes,
+    ImageOverlayBox,
+    image_lightbox,
+    image_preview_button,
+    media_preview_button,
+    video_preview_button,
+    video_lightbox,
+    MEDIA_LIGHTBOX_OPEN,
+    MEDIA_LIGHTBOX_PLAY,
+)
 
 
 def _fail(msg: String) raises:
     print("FAIL:", msg)
     raise Error(msg)
+
+
+def _near(a: Float32, b: Float32) -> Bool:
+    var d = a - b
+    if d < 0.0:
+        d = -d
+    return d < 0.001
 
 
 # ----------------------------------------------------------------------------
@@ -236,6 +260,168 @@ def test_image_lightbox_emits_popup_commands() raises:
         _fail("lightbox should emit popup draw commands")
 
 
+def test_media_and_video_preview_button_click() raises:
+    """Test 8: explicit media/video preview wrappers report clicks."""
+    var ctx = Context()
+    ctx.begin_frame_no_input(
+        Vec2(800.0, 600.0), Vec2(40.0, 40.0), True, False
+    )
+    var widths = List[Int32]()
+    widths.append(240)
+    ctx.layout_row(widths^, 180)
+    var media_clicked = media_preview_button(
+        ctx,
+        String("media_preview"),
+        UInt32(9),
+        String("Media"),
+        String("caption"),
+        128,
+        96,
+        True,
+    )
+    if not media_clicked:
+        _fail("media preview button should click on press frame")
+    ctx.end_frame()
+
+    ctx.begin_frame_no_input(
+        Vec2(800.0, 600.0), Vec2(40.0, 40.0), True, False
+    )
+    var widths2 = List[Int32]()
+    widths2.append(240)
+    ctx.layout_row(widths2^, 180)
+    var video_clicked = video_preview_button(
+        ctx,
+        String("video_preview"),
+        UInt32(10),
+        String("Video"),
+        String("clip.mp4"),
+        480,
+        288,
+    )
+    if not video_clicked:
+        _fail("video preview button should click on press frame")
+    ctx.end_frame()
+
+
+def test_video_lightbox_play_action() raises:
+    """Test 9: video lightbox returns MEDIA_LIGHTBOX_PLAY on play release."""
+    var ctx = Context()
+    ctx.begin_frame_no_input(
+        Vec2(1200.0, 800.0), Vec2(900.0, 100.0), True, False
+    )
+    var action_press = video_lightbox(
+        ctx,
+        String("video_lightbox"),
+        UInt32(12),
+        String("Video preview"),
+        String("caption"),
+        String("/tmp/clip.mp4"),
+        480,
+        288,
+    )
+    if action_press != MEDIA_LIGHTBOX_OPEN:
+        _fail("video lightbox should stay open on play press frame")
+    ctx.end_frame()
+
+    ctx.begin_frame_no_input(
+        Vec2(1200.0, 800.0), Vec2(900.0, 100.0), False, True
+    )
+    var action_release = video_lightbox(
+        ctx,
+        String("video_lightbox"),
+        UInt32(12),
+        String("Video preview"),
+        String("caption"),
+        String("/tmp/clip.mp4"),
+        480,
+        288,
+    )
+    if action_release != MEDIA_LIGHTBOX_PLAY:
+        _fail("video lightbox should return MEDIA_LIGHTBOX_PLAY on play release")
+    ctx.end_frame()
+
+
+def test_image_overlay_box_mapping_and_hit_test() raises:
+    """Test 10: pixel-space overlay boxes map to fitted screen space."""
+    var fitted = image_fit_rect(Rect(0.0, 0.0, 300.0, 300.0), 1000, 500)
+    if not _near(fitted.x, 0.0) or not _near(fitted.y, 75.0) or not _near(fitted.w, 300.0) or not _near(fitted.h, 150.0):
+        _fail("1000x500 image should fit into 300x300 at 300x150 centered vertically")
+    var screen = image_pixel_to_screen_rect(
+        fitted.copy(),
+        1000,
+        500,
+        Rect(100.0, 50.0, 200.0, 100.0),
+    )
+    if not _near(screen.x, 30.0) or not _near(screen.y, 90.0) or not _near(screen.w, 60.0) or not _near(screen.h, 30.0):
+        _fail("pixel box should map through fitted image scale")
+    var px = image_screen_to_pixel_point(fitted.copy(), 1000, 500, Vec2(60.0, 105.0))
+    if not _near(px.x, 200.0) or not _near(px.y, 100.0):
+        _fail("screen point should map back into source image pixels")
+
+    var boxes = List[ImageOverlayBox]()
+    boxes.append(
+        ImageOverlayBox(
+            Int64(1),
+            Rect(100.0, 50.0, 200.0, 100.0),
+            String("01"),
+            String("subject"),
+            Color(80, 180, 255, 220),
+        )
+    )
+    boxes.append(
+        ImageOverlayBox(
+            Int64(2),
+            Rect(150.0, 75.0, 100.0, 50.0),
+            String("02"),
+            String("detail"),
+            Color(255, 210, 80, 220),
+        )
+    )
+    var hit = image_box_hit_test(fitted.copy(), 1000, 500, boxes, Vec2(55.0, 100.0))
+    if hit != Int64(2):
+        _fail("hit test should return topmost matching overlay id")
+    var miss = image_box_hit_test(fitted.copy(), 1000, 500, boxes, Vec2(10.0, 10.0))
+    if miss != Int64(-1):
+        _fail("hit test should return -1 outside overlays")
+    print("  PASS test_image_overlay_box_mapping_and_hit_test")
+
+
+def test_image_rect_fit_boxes_emits_commands() raises:
+    """Test 11: drawing an image with boxes emits image + overlay commands."""
+    var ctx = Context()
+    ctx.begin_frame_no_input(
+        Vec2(800.0, 600.0), Vec2(500.0, 500.0), False, False
+    )
+    var boxes = List[ImageOverlayBox]()
+    boxes.append(
+        ImageOverlayBox(
+            Int64(1),
+            Rect(10.0, 20.0, 50.0, 60.0),
+            String("01"),
+            String("region"),
+            Color(80, 180, 255, 220),
+            True,
+        )
+    )
+    var before = ctx.commands.byte_count()
+    var fitted = image_rect_fit_boxes(
+        ctx,
+        Rect(0.0, 0.0, 200.0, 200.0),
+        UInt32(17),
+        100,
+        100,
+        boxes,
+        Color(255, 255, 255, 255),
+    )
+    var after = ctx.commands.byte_count()
+    if fitted.w != 200.0 or fitted.h != 200.0:
+        _fail("square image should fill square fitted rect")
+    if (after - before) <= Int(CMD_IMAGE_SIZE):
+        _fail("image_rect_fit_boxes should emit overlay draw commands beyond image")
+    ctx.end_frame()
+    print("  PASS test_image_rect_fit_boxes_emits_commands")
+
+
 def main() raises:
     test_compile_and_basic_call()
     test_image_emits_one_command()
@@ -244,4 +430,8 @@ def main() raises:
     test_image_rect_does_not_consume_layout_slot()
     test_image_preview_button_click()
     test_image_lightbox_emits_popup_commands()
-    print("PASS: image widget smoke tests (7 tests)")
+    test_media_and_video_preview_button_click()
+    test_video_lightbox_play_action()
+    test_image_overlay_box_mapping_and_hit_test()
+    test_image_rect_fit_boxes_emits_commands()
+    print("PASS: image widget smoke tests (11 tests)")
