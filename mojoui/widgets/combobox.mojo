@@ -139,7 +139,7 @@ def combobox(
     elif (flags & CTRL_HOVERED) != 0:
         bg = ctx.theme.hover_bg.copy()
     else:
-        bg = ctx.theme.primary.copy()
+        bg = ctx.theme.control_bg.copy()
     ctx.draw_rect(rect.copy(), bg^)
 
     # Selected text — guarded for out-of-range index. Out-of-range renders

@@ -133,7 +133,7 @@ def drag_value(
     elif (flags & CTRL_HOVERED) != 0:
         bg = ctx.theme.hover_bg.copy()
     else:
-        bg = ctx.theme.primary.copy()
+        bg = ctx.theme.control_bg.copy()
     ctx.draw_rect(rect.copy(), bg^)
 
     # Value text — formatted via `String(value)`. Mojo's default Float32 ->

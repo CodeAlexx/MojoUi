@@ -213,7 +213,11 @@ def test_bright_button_uses_dark_label_text() raises:
     """Test 9: bright primary fills must not draw unreadable white labels."""
     var ctx = Context()
     _make_ctx(ctx, Vec2(500.0, 500.0), False, False)
+    # Resting button fill is theme.control_bg (split from primary). Set both
+    # so the "bright fill -> dark label" contrast check exercises the fill the
+    # button actually paints.
     ctx.theme.primary = Color(248, 255, 127, 255)
+    ctx.theme.control_bg = Color(248, 255, 127, 255)
     var _ = button(ctx, String("Generate"))
     var off: Int32 = 0
     var found = False

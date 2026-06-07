@@ -72,7 +72,11 @@ struct DefaultTheme(Copyable, Movable):
 
     var bg: Color           # window/container background
     var fg: Color           # foreground (text on bg)
-    var primary: Color      # accent (focus rings, sliders, links)
+    var primary: Color      # accent (focus rings, slider/progress fill, links)
+    var control_bg: Color   # resting fill of input controls (combobox/button/
+                            # drag_value). Split from `primary` so an app can
+                            # have neutral controls AND a vivid accent. Defaults
+                            # to `primary` so existing callers are unchanged.
     var hover_bg: Color     # background under hovered widgets
     var active_bg: Color    # background under pressed (active) widgets
     var border: Color       # border / separator color
@@ -87,6 +91,8 @@ struct DefaultTheme(Copyable, Movable):
         self.bg = Color(24, 24, 28, 255)
         self.fg = Color(225, 225, 235, 255)
         self.primary = Color(110, 90, 200, 255)
+        self.control_bg = Color(110, 90, 200, 255)  # == primary: preserves
+        #                                              pre-split widget look
         self.hover_bg = Color(50, 50, 60, 255)
         self.active_bg = Color(80, 70, 140, 255)
         self.border = Color(70, 70, 80, 255)

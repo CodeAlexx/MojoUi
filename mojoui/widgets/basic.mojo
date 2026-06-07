@@ -121,7 +121,7 @@ def _resolve_button_bg(ctx: Context, state_flags: Int32) -> Color:
         return ctx.theme.active_bg.copy()
     elif (state_flags & CTRL_HOVERED) != 0:
         return ctx.theme.hover_bg.copy()
-    return ctx.theme.primary.copy()
+    return ctx.theme.control_bg.copy()
 
 
 def _readable_text_on_fill(fill: Color) -> Color:
@@ -256,6 +256,69 @@ def button(mut ctx: Context, label: String) -> Bool:
     # 6. return — the click event. CTRL_RELEASED is set by update_control
     #    only on the single frame the user releases while still over the
     #    button rect (release-outside is a drag-cancel — no click).
+    return (flags & CTRL_RELEASED) != 0
+
+
+def _shade(c: Color, f: Float32) -> Color:
+    """Multiply RGB by `f` (clamped to 0..255), preserving alpha. Used to
+    derive hover (f>1) / pressed (f<1) shades of an accent fill."""
+    var r = Int(Float32(Int(c.r)) * f)
+    var g = Int(Float32(Int(c.g)) * f)
+    var b = Int(Float32(Int(c.b)) * f)
+    if r > 255:
+        r = 255
+    if g > 255:
+        g = 255
+    if b > 255:
+        b = 255
+    if r < 0:
+        r = 0
+    if g < 0:
+        g = 0
+    if b < 0:
+        b = 0
+    return Color(UInt8(r), UInt8(g), UInt8(b), c.a)
+
+
+def _resolve_button_bg_primary(ctx: Context, state_flags: Int32) -> Color:
+    """Primary-button background: resting = theme.primary (accent), hover =
+    lightened, pressed = darkened. Distinct from `_resolve_button_bg` which
+    uses the neutral control_bg ladder."""
+    if (state_flags & CTRL_ACTIVE) != 0:
+        return _shade(ctx.theme.primary.copy(), 0.85)
+    elif (state_flags & CTRL_HOVERED) != 0:
+        return _shade(ctx.theme.primary.copy(), 1.12)
+    return ctx.theme.primary.copy()
+
+
+def button_primary(mut ctx: Context, label: String) -> Bool:
+    """Primary-action button — same interaction + return contract as `button`,
+    but its resting fill is `theme.primary` (the accent) rather than
+    `control_bg`. Use for the single prominent action in a view (e.g. the
+    Generate button). Label color auto-contrasts via `_readable_text_on_fill`."""
+    var id = ctx.get_id(label)
+    var rect = ctx.layout_next()
+    var flags = ctx.update_control(id, rect.copy(), OPT_FOCUSABLE)
+    var bg_color = _resolve_button_bg_primary(ctx, flags)
+    var is_pressed = (flags & CTRL_ACTIVE) != 0
+    if not is_pressed:
+        var shadow_color = Color(UInt8(0), UInt8(0), UInt8(0), _BUTTON_SHADOW_ALPHA)
+        tess_drop_shadow(
+            ctx, rect.copy(), _BUTTON_RADIUS, _BUTTON_SHADOW_BLUR,
+            _BUTTON_SHADOW_OFFSET_X, _BUTTON_SHADOW_OFFSET_Y, shadow_color^,
+        )
+    tess_rounded_rect(ctx, rect.copy(), _BUTTON_RADIUS, bg_color.copy(), 6)
+    if (flags & CTRL_FOCUSED) != 0:
+        _draw_border(ctx, rect.copy(), ctx.theme.text.copy(), 1.5)
+    if ctx.theme.font_id != 0:
+        var label_pos = Vec2(
+            rect.x + Float32(ctx.theme.padding),
+            rect.y + (rect.h + Float32(ctx.theme.font_size_pt) * 0.7) * 0.5,
+        )
+        ctx.draw_text(
+            ctx.theme.font_id, ctx.theme.font_size_pt, label_pos^,
+            _readable_text_on_fill(bg_color.copy()), label,
+        )
     return (flags & CTRL_RELEASED) != 0
 
 
