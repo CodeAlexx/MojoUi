@@ -344,14 +344,18 @@ struct CommandBuffer(Movable):
         (no NUL — `text_byte_len` is source of truth, mirroring
         `Backend.input_text` sized-buffer reads)."""
         var off = Int32(self.byte_count())
-        var n = Int32(text.byte_length())
+        # Materialize a stable local copy before reading the raw UTF-8 bytes.
+        # Live UIs often pass temporary strings from helper functions; copying
+        # here keeps the pointer valid for the whole byte-copy loop.
+        var stable = text.copy()
+        var n = Int32(stable.byte_length())
         _write_header(self.bytes, CMD_TEXT, CMD_TEXT_FIXED_SIZE + n)
         _write_u32(self.bytes, font_id)
         _write_i32(self.bytes, size_pt)
         _write_vec2(self.bytes, pos)
         _write_color(self.bytes, color)
         _write_i32(self.bytes, n)
-        var ptr = text.unsafe_ptr()
+        var ptr = stable.unsafe_ptr()
         for i in range(Int(n)):
             self.bytes.append(ptr[i])
         return off

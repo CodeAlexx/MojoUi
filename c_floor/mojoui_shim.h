@@ -92,6 +92,9 @@ int   mojoui_get_display_height(void);
 int   mojoui_get_mouse_x(void);
 int   mojoui_get_mouse_y(void);
 int   mojoui_get_mouse_button(int button);  /* button: MOJOUI_BTN_* */
+float mojoui_get_scroll_x(void);
+float mojoui_get_scroll_y(void);
+void  mojoui_clear_scroll(void);
 int   mojoui_get_key(int mojoui_key);       /* mojoui_key: MOJOUI_KEY_* */
 const char* mojoui_get_input_text(void);
 int   mojoui_input_text_length(void);
@@ -126,6 +129,41 @@ int      mojoui_max_batch_verts(void);
 int      mojoui_max_batch_indices(void);
 uint32_t mojoui_make_texture(int width, int height, const uint8_t* rgba_pixels);
 void     mojoui_destroy_texture(uint32_t texture_id);
+uint32_t mojoui_load_texture_file_len(const char* path, int path_len,
+                                      int max_width, int max_height,
+                                      int* out_width, int* out_height);
+int      mojoui_is_video_file_len(const char* path, int path_len);
+uint32_t mojoui_load_video_thumbnail_len(const char* path, int path_len,
+                                         int max_width, int max_height,
+                                         int* out_width, int* out_height);
+int      mojoui_open_video_file_len(const char* path, int path_len);
+void     mojoui_media_scan_clear(void);
+int      mojoui_media_scan_dir_len(const char* path, int path_len,
+                                   int recursive, int max_items);
+int      mojoui_media_scan_count(void);
+const char* mojoui_media_scan_path(int index);
+int      mojoui_media_scan_path_len(int index);
+int      mojoui_media_scan_is_video(int index);
+
+
+/* ============================================================
+ * Section 2b — Host/GPU Metrics (headless-safe helpers)
+ * ============================================================ */
+
+int      mojoui_refresh_system_metrics(void);
+const char* mojoui_system_gpu_name(void);
+int      mojoui_system_gpu_name_len(void);
+const char* mojoui_system_gpu_driver(void);
+int      mojoui_system_gpu_driver_len(void);
+int      mojoui_system_gpu_memory_total_mb(void);
+int      mojoui_system_gpu_memory_used_mb(void);
+int      mojoui_system_gpu_util_percent(void);
+int      mojoui_system_gpu_temperature_c(void);
+const char* mojoui_system_cpu_name(void);
+int      mojoui_system_cpu_name_len(void);
+int      mojoui_system_cpu_util_percent(void);
+int      mojoui_system_ram_total_mb(void);
+int      mojoui_system_ram_used_mb(void);
 
 
 /* ============================================================

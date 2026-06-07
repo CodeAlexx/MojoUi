@@ -57,11 +57,14 @@ from mojoui.render.ffi import (
     MOJOUI_BTN_RIGHT,
     MOJOUI_KEY_COUNT,
     clear_input_text as _ffi_clear_input_text,
+    clear_scroll as _ffi_clear_scroll,
     get_input_text as _ffi_get_input_text,
     get_key as _ffi_get_key,
     get_mouse_button as _ffi_get_mouse_button,
     get_mouse_x as _ffi_get_mouse_x,
     get_mouse_y as _ffi_get_mouse_y,
+    get_scroll_x as _ffi_get_scroll_x,
+    get_scroll_y as _ffi_get_scroll_y,
     input_text_length as _ffi_input_text_length,
 )
 
@@ -191,6 +194,7 @@ struct InputState(Copyable, Movable):
 
     var mouse_pos: Vec2
     var mouse_delta: Vec2
+    var scroll_delta: Vec2
     var prev_mouse_pos: Vec2
     var mouse: InlineArray[ButtonState, _MOUSE_SLOTS]
     var prev_mouse_held: InlineArray[Bool, _MOUSE_SLOTS]
@@ -224,6 +228,7 @@ struct InputState(Copyable, Movable):
         """
         self.mouse_pos = Vec2.zero()
         self.mouse_delta = Vec2.zero()
+        self.scroll_delta = Vec2.zero()
         self.prev_mouse_pos = Vec2.zero()
         self.mouse = InlineArray[ButtonState, _MOUSE_SLOTS](
             fill=ButtonState(False, False, False)
@@ -266,10 +271,11 @@ struct InputState(Copyable, Movable):
         Order:
           1. Sample mouse position (`get_mouse_x/y`), compute `mouse_delta`
              relative to the previous frame, advance `prev_mouse_pos`.
-          2. For each mouse button (LEFT/RIGHT/MIDDLE): sample current level
+          2. Sample wheel/trackpad scroll delta and drain it from the C floor.
+          3. For each mouse button (LEFT/RIGHT/MIDDLE): sample current level
              via `get_mouse_button`, derive ButtonState via `_compute_edge`,
              store in `self.mouse[i]`, update `prev_mouse_held[i]`.
-          3. For each key (0..MOJOUI_KEY_COUNT-1): same pattern via `get_key`.
+          4. For each key (0..MOJOUI_KEY_COUNT-1): same pattern via `get_key`.
 
         Text input is NOT polled here — it remains in the C-side static
         buffer until `consume_text()` is called explicitly.
@@ -282,6 +288,9 @@ struct InputState(Copyable, Movable):
         self.mouse_delta = new_pos - self.prev_mouse_pos
         self.prev_mouse_pos = self.mouse_pos.copy()
         self.mouse_pos = new_pos.copy()
+
+        self.scroll_delta = Vec2(_ffi_get_scroll_x(), _ffi_get_scroll_y())
+        _ffi_clear_scroll()
 
         # ----- Mouse buttons -----
         for i in range(_MOUSE_SLOTS):

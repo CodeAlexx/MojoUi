@@ -2,7 +2,7 @@
  * mojoui_fonts.c — TTF loading + pre-baked glyph atlas via stb_truetype.
  *
  * MojoUI M0 chunk 5. Provides:
- *   - mojoui_load_font  : load a TTF and pre-bake atlases at sizes 12/14/16/18/24
+ *   - mojoui_load_font  : load a TTF and pre-bake atlases for dense app text
  *   - mojoui_destroy_font: free TTF buffer + GPU atlas textures
  *   - mojoui_text_width / mojoui_text_height: integer metrics
  *   - mojoui_draw_text  : emit a single mojoui_draw_batch per string
@@ -63,13 +63,21 @@ enum {
     MUI_ATLAS_H         = 512,
     MUI_FIRST_CHAR      = 32,
     MUI_NUM_CHARS       = 95,       /* 32..126 inclusive */
-    MUI_SIZES_PER_FONT  = 5,
+    MUI_SIZES_PER_FONT  = 35,
     MUI_DRAW_BUF_CHARS  = 1024,     /* per-call cap; chars beyond are dropped */
     MUI_VERT_FLOATS     = 5,        /* x,y,u,v,color_bits — must match render */
 };
 
-/* Pre-baked sizes. Keep ascending; size lookup is linear. */
-static const int g_size_table[MUI_SIZES_PER_FONT] = { 12, 14, 16, 18, 24 };
+/* Pre-baked sizes. Keep ascending; size lookup is linear. Dense native apps
+ * scale text continuously across laptop, 1440p, and 4K displays, so keeping
+ * every point size in this range avoids "valid command, invisible text" gaps.
+ */
+static const int g_size_table[MUI_SIZES_PER_FONT] = {
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+    20, 21, 22, 23, 24, 25, 26, 27, 28,
+    30, 32, 34, 36, 38, 40, 42, 44, 46, 48,
+    50, 52, 54, 56, 60, 64
+};
 
 /* ---------------- data structures ---------------- */
 
@@ -164,12 +172,24 @@ static mui_font* mui_font_lookup(uint32_t font_id) {
 
 /* Find the atlas for a given pre-baked size_pt within a font. NULL if missing. */
 static mui_atlas* mui_atlas_for_size(mui_font* f, int size_pt) {
+    mui_atlas* best = NULL;
+    int best_delta = 1 << 30;
     for (int i = 0; i < MUI_SIZES_PER_FONT; i++) {
         if (f->atlases[i].size_pt == size_pt && f->atlases[i].texture_id != 0) {
             return &f->atlases[i];
         }
+        if (f->atlases[i].texture_id != 0) {
+            int delta = f->atlases[i].size_pt - size_pt;
+            if (delta < 0) {
+                delta = -delta;
+            }
+            if (delta < best_delta) {
+                best_delta = delta;
+                best = &f->atlases[i];
+            }
+        }
     }
-    return NULL;
+    return best;
 }
 
 /* Bake one atlas (size_pt) into a 512x512 alpha bitmap, expand to RGBA,
@@ -188,7 +208,7 @@ static int mui_bake_one(mui_font* f, mui_atlas* a, int size_pt) {
         a->chars
     );
     /* rc < 0 means not all chars fit (negative is how many DID fit). For our
-     * sizes (<=24pt) and 512x512 the full ASCII range fits comfortably for
+     * sizes (<=64pt) and 512x512 the full ASCII range usually fits for
      * all reasonable fonts; treat partial fits as still-usable. rc == 0
      * means nothing fit — that's a hard failure. */
     if (rc == 0) {

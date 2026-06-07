@@ -110,6 +110,27 @@ def test_text_growth() raises:
         _fail("size_pt did not round-trip")
 
 
+def _temporary_text(label: String) -> String:
+    return String("SECTION - ") + label.copy()
+
+
+def test_text_from_temporary_string() raises:
+    """Text emitted from helper-built temporaries must be copied safely."""
+    var buf = CommandBuffer()
+    var off = buf.emit_text(
+        UInt32(9),
+        Int32(13),
+        Vec2(10.0, 12.0),
+        Color(200, 190, 180, 255),
+        _temporary_text(String("Training")),
+    )
+    var cmd = read_cmd_text(buf, off)
+    if cmd.text != String("SECTION - Training"):
+        _fail("temporary text string did not round-trip")
+    if Int32(cmd.text_byte_len) != Int32(18):
+        _fail("temporary text byte length wrong")
+
+
 def test_reset() raises:
     """Reset clears the buffer; subsequent emits start at offset 0 again."""
     var buf = CommandBuffer()
@@ -188,7 +209,8 @@ def main() raises:
     test_two_rects()
     test_jump_emit_and_patch()
     test_text_growth()
+    test_text_from_temporary_string()
     test_reset()
     test_walk_with_jump()
     test_rect_roundtrip()
-    print("PASS: commands smoke tests (8 tests)")
+    print("PASS: commands smoke tests (9 tests)")

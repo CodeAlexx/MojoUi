@@ -81,6 +81,40 @@ struct DefaultTheme(Copyable, Movable):
     var active_bg: Color    # background under pressed (active) widgets
     var border: Color       # border / separator color
     var text: Color         # default text color (== fg by default)
+
+    # Extended semantic palette. These mirror mojoui.theme.tokens.ColorTokens
+    # so apps can theme all surfaces/states through ctx.theme without needing
+    # a second token object at every widget call.
+    var bg_panel: Color
+    var bg_surface: Color
+    var bg_input: Color
+    var floating_bg: Color
+    var faint_bg: Color
+    var extreme_bg: Color
+    var text_subdued: Color
+    var text_disabled: Color
+    var text_on_accent: Color
+    var text_strong: Color
+    var primary_hover: Color
+    var primary_active: Color
+    var border_strong: Color
+    var separator: Color
+    var selection_bg: Color
+    var selection_stroke: Color
+    var focus_outline: Color
+    var info_bg: Color
+    var info_text: Color
+    var warning_bg: Color
+    var warning_text: Color
+    var error_bg: Color
+    var error_text: Color
+    var success_bg: Color
+    var success_text: Color
+    var graph_canvas_bg: Color
+    var graph_node_bg: Color
+    var graph_node_selected_bg: Color
+    var graph_node_title_bg: Color
+
     var font_id: UInt32     # default font id (0 until set_default_font called)
     var font_size_pt: Int32 # default text size in points (14)
     var row_height: Int32   # default layout row height in px (24)
@@ -97,6 +131,37 @@ struct DefaultTheme(Copyable, Movable):
         self.active_bg = Color(80, 70, 140, 255)
         self.border = Color(70, 70, 80, 255)
         self.text = Color(225, 225, 235, 255)
+
+        self.bg_panel = self.bg.copy()
+        self.bg_surface = self.hover_bg.copy()
+        self.bg_input = self.control_bg.copy()
+        self.floating_bg = Color(36, 38, 44, 255)
+        self.faint_bg = Color(32, 34, 40, 255)
+        self.extreme_bg = Color(8, 9, 12, 255)
+        self.text_subdued = Color(150, 150, 165, 255)
+        self.text_disabled = Color(80, 80, 90, 255)
+        self.text_on_accent = Color(255, 255, 255, 255)
+        self.text_strong = Color(250, 250, 255, 255)
+        self.primary_hover = Color(130, 110, 220, 255)
+        self.primary_active = self.active_bg.copy()
+        self.border_strong = Color(90, 94, 102, 255)
+        self.separator = self.border.copy()
+        self.selection_bg = Color(70, 90, 160, 200)
+        self.selection_stroke = Color(120, 140, 220, 255)
+        self.focus_outline = self.primary_hover.copy()
+        self.info_bg = Color(50, 90, 140, 255)
+        self.info_text = Color(200, 220, 240, 255)
+        self.warning_bg = Color(160, 110, 30, 255)
+        self.warning_text = Color(240, 220, 180, 255)
+        self.error_bg = Color(160, 50, 50, 255)
+        self.error_text = Color(240, 200, 200, 255)
+        self.success_bg = Color(50, 130, 60, 255)
+        self.success_text = Color(200, 240, 200, 255)
+        self.graph_canvas_bg = Color(15, 15, 18, 255)
+        self.graph_node_bg = Color(40, 40, 50, 240)
+        self.graph_node_selected_bg = Color(60, 60, 90, 240)
+        self.graph_node_title_bg = Color(60, 70, 110, 255)
+
         self.font_id = 0
         self.font_size_pt = 14
         self.row_height = 24
@@ -368,12 +433,12 @@ struct Context(Movable):
         Pair every `begin_popup` with `end_popup`. Nested popups (submenu
         opened from a popup item) are allowed; `popup_rects` simply grows.
 
-        Note: only `draw_rect` / `draw_text` / `draw_clip` honour the
+        Note: only `draw_rect` / `draw_text` / `draw_clip` / `draw_image` honour the
         active layer today (the set of forwarders the menu primitives
         need). Widgets that bypass Context and call
         `ctx.commands.emit_*` directly stay on the base buffer regardless.
-        Extend this list (and add `draw_icon` / `draw_image` /
-        `draw_triangles` forwarders) when a popup needs those primitives.
+        Extend this list (and add `draw_icon` / `draw_triangles`
+        forwarders) when a popup needs those primitives.
         """
         self.active_layer = LAYER_POPUP
         self.popup_rects.append(rect.copy())
@@ -535,6 +600,15 @@ struct Context(Movable):
             _ = self.popup_commands.emit_clip(rect)
         else:
             _ = self.commands.emit_clip(rect)
+
+    def draw_image(mut self, rect: Rect, texture_id: UInt32, tint: Color):
+        """Append a textured-rect draw command. Routes to popup layer when
+        active so lightboxes and other overlays can render images above the
+        base UI."""
+        if self.active_layer == LAYER_POPUP:
+            _ = self.popup_commands.emit_image(rect, texture_id, tint)
+        else:
+            _ = self.commands.emit_image(rect, texture_id, tint)
 
     def reset_clip(mut self):
         """Restore clipping to the full current window rect."""

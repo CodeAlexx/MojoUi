@@ -54,6 +54,8 @@ static int  g_should_close  = 0;
 static int  g_mouse_x = 0;
 static int  g_mouse_y = 0;
 static int  g_mouse_buttons[3] = {0, 0, 0};   /* LEFT, RIGHT, MIDDLE */
+static float g_scroll_x = 0.0f;
+static float g_scroll_y = 0.0f;
 static unsigned char g_keys[MOJOUI_KEY_COUNT];
 static char g_input_text_buf[MOJOUI_INPUT_TEXT_CAP];
 static int  g_input_text_len = 0;
@@ -166,6 +168,10 @@ static void platform_event_cb(const sapp_event* ev) {
             g_mouse_x = (int)ev->mouse_x;
             g_mouse_y = (int)ev->mouse_y;
             break;
+        case SAPP_EVENTTYPE_MOUSE_SCROLL:
+            g_scroll_x += ev->scroll_x;
+            g_scroll_y += ev->scroll_y;
+            break;
         case SAPP_EVENTTYPE_RESIZED:
             g_window_width  = ev->window_width;
             g_window_height = ev->window_height;
@@ -271,6 +277,13 @@ int mojoui_get_display_height(void) {
 
 int  mojoui_get_mouse_x(void)       { return g_mouse_x; }
 int  mojoui_get_mouse_y(void)       { return g_mouse_y; }
+
+float mojoui_get_scroll_x(void) { return g_scroll_x; }
+float mojoui_get_scroll_y(void) { return g_scroll_y; }
+void mojoui_clear_scroll(void) {
+    g_scroll_x = 0.0f;
+    g_scroll_y = 0.0f;
+}
 
 int mojoui_get_mouse_button(int button) {
     if (button < 0 || button >= 3) return 0;

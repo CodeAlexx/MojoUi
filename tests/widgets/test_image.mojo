@@ -22,7 +22,7 @@ from mojoui.core.commands import (
     CMD_IMAGE_SIZE,
     read_cmd_image,
 )
-from mojoui.widgets.image import image, image_tinted, image_rect
+from mojoui.widgets.image import image, image_tinted, image_rect, image_lightbox, image_preview_button
 
 
 def _fail(msg: String) raises:
@@ -177,10 +177,71 @@ def test_image_rect_does_not_consume_layout_slot() raises:
     ctx.end_frame()
 
 
+def test_image_preview_button_click() raises:
+    """Test 6: clickable preview card reports a click on release after a
+    press in the same rect."""
+    var ctx = Context()
+    ctx.begin_frame_no_input(
+        Vec2(800.0, 600.0), Vec2(40.0, 40.0), True, False
+    )
+    var widths = List[Int32]()
+    widths.append(240)
+    ctx.layout_row(widths^, 180)
+    var clicked_press = image_preview_button(
+        ctx,
+        String("preview"),
+        UInt32(9),
+        String("Preview"),
+        String("caption"),
+    )
+    if not clicked_press:
+        _fail("preview button should open on press frame")
+    ctx.end_frame()
+
+    ctx.begin_frame_no_input(
+        Vec2(800.0, 600.0), Vec2(40.0, 40.0), False, True
+    )
+    var widths2 = List[Int32]()
+    widths2.append(240)
+    ctx.layout_row(widths2^, 180)
+    var clicked_release = image_preview_button(
+        ctx,
+        String("preview"),
+        UInt32(9),
+        String("Preview"),
+        String("caption"),
+    )
+    if not clicked_release:
+        _fail("preview button should click on release inside card")
+    ctx.end_frame()
+
+
+def test_image_lightbox_emits_popup_commands() raises:
+    """Test 7: lightbox overlay emits image commands and can be left open."""
+    var ctx = Context()
+    ctx.begin_frame_no_input(
+        Vec2(1200.0, 800.0), Vec2(10.0, 10.0), False, False
+    )
+    var close = image_lightbox(
+        ctx,
+        String("lightbox"),
+        UInt32(11),
+        String("Large preview"),
+        String("image path"),
+    )
+    if close:
+        _fail("lightbox should not close without a release")
+    ctx.end_frame()
+    if ctx.commands.byte_count() <= 0:
+        _fail("lightbox should emit popup draw commands")
+
+
 def main() raises:
     test_compile_and_basic_call()
     test_image_emits_one_command()
     test_image_tinted_preserves_tint()
     test_image_rect_paints_at_explicit_rect()
     test_image_rect_does_not_consume_layout_slot()
-    print("PASS: image widget smoke tests (5 tests)")
+    test_image_preview_button_click()
+    test_image_lightbox_emits_popup_commands()
+    print("PASS: image widget smoke tests (7 tests)")

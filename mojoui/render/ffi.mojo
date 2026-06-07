@@ -211,6 +211,21 @@ def get_mouse_button(button: Int32) -> Int32:
     return external_call["mojoui_get_mouse_button", Int32](button)
 
 
+def get_scroll_x() -> Float32:
+    """mojoui_get_scroll_x() -> float. Accumulated horizontal wheel delta."""
+    return external_call["mojoui_get_scroll_x", Float32]()
+
+
+def get_scroll_y() -> Float32:
+    """mojoui_get_scroll_y() -> float. Accumulated vertical wheel delta."""
+    return external_call["mojoui_get_scroll_y", Float32]()
+
+
+def clear_scroll():
+    """mojoui_clear_scroll(). Drain wheel deltas after polling."""
+    external_call["mojoui_clear_scroll", NoneType]()
+
+
 def get_key(mojoui_key: Int32) -> Int32:
     """mojoui_get_key(mojoui_key) -> int. 1 if pressed.
     `mojoui_key` is one of the MOJOUI_KEY_* constants (NOT a raw sapp code)."""
@@ -350,6 +365,152 @@ def make_texture(
     return external_call["mojoui_make_texture", UInt32](
         width, height, rgba_pixels
     )
+
+
+def load_texture_file(
+    path: String,
+    max_width: Int32,
+    max_height: Int32,
+    out_width: UnsafePointer[Int32, MutAnyOrigin],
+    out_height: UnsafePointer[Int32, MutAnyOrigin],
+) -> UInt32:
+    """mojoui_load_texture_file_len(path, len, max_w, max_h, out_w, out_h)."""
+    return external_call["mojoui_load_texture_file_len", UInt32](
+        path.unsafe_ptr(),
+        Int32(path.byte_length()),
+        max_width,
+        max_height,
+        out_width,
+        out_height,
+    )
+
+
+def is_video_file(path: String) -> Int32:
+    """mojoui_is_video_file_len(path, len). Extension-based media check."""
+    return external_call["mojoui_is_video_file_len", Int32](
+        path.unsafe_ptr(),
+        Int32(path.byte_length()),
+    )
+
+
+def load_video_thumbnail(
+    path: String,
+    max_width: Int32,
+    max_height: Int32,
+    out_width: UnsafePointer[Int32, MutAnyOrigin],
+    out_height: UnsafePointer[Int32, MutAnyOrigin],
+) -> UInt32:
+    """mojoui_load_video_thumbnail_len(path, len, max_w, max_h, out_w, out_h)."""
+    return external_call["mojoui_load_video_thumbnail_len", UInt32](
+        path.unsafe_ptr(),
+        Int32(path.byte_length()),
+        max_width,
+        max_height,
+        out_width,
+        out_height,
+    )
+
+
+def open_video_file(path: String) -> Int32:
+    """mojoui_open_video_file_len(path, len). Launches system video player."""
+    return external_call["mojoui_open_video_file_len", Int32](
+        path.unsafe_ptr(),
+        Int32(path.byte_length()),
+    )
+
+
+def media_scan_clear():
+    """mojoui_media_scan_clear(). Frees the C-owned media scan result list."""
+    external_call["mojoui_media_scan_clear", NoneType]()
+
+
+def media_scan_dir(path: String, recursive: Int32, max_items: Int32) -> Int32:
+    """mojoui_media_scan_dir_len(path, len, recursive, max_items)."""
+    return external_call["mojoui_media_scan_dir_len", Int32](
+        path.unsafe_ptr(),
+        Int32(path.byte_length()),
+        recursive,
+        max_items,
+    )
+
+
+def media_scan_count() -> Int32:
+    """mojoui_media_scan_count()."""
+    return external_call["mojoui_media_scan_count", Int32]()
+
+
+def media_scan_path(index: Int32) -> UnsafePointer[Int8, MutAnyOrigin]:
+    """mojoui_media_scan_path(index). Pointer remains C-owned until next scan."""
+    return external_call[
+        "mojoui_media_scan_path", UnsafePointer[Int8, MutAnyOrigin]
+    ](index)
+
+
+def media_scan_path_len(index: Int32) -> Int32:
+    """mojoui_media_scan_path_len(index)."""
+    return external_call["mojoui_media_scan_path_len", Int32](index)
+
+
+def media_scan_is_video(index: Int32) -> Int32:
+    """mojoui_media_scan_is_video(index)."""
+    return external_call["mojoui_media_scan_is_video", Int32](index)
+
+
+def refresh_system_metrics() -> Int32:
+    """mojoui_refresh_system_metrics() -> int. Returns 1 if GPU data was read."""
+    return external_call["mojoui_refresh_system_metrics", Int32]()
+
+
+def system_gpu_name() -> UnsafePointer[Int8, MutAnyOrigin]:
+    return external_call["mojoui_system_gpu_name", UnsafePointer[Int8, MutAnyOrigin]]()
+
+
+def system_gpu_name_len() -> Int32:
+    return external_call["mojoui_system_gpu_name_len", Int32]()
+
+
+def system_gpu_driver() -> UnsafePointer[Int8, MutAnyOrigin]:
+    return external_call["mojoui_system_gpu_driver", UnsafePointer[Int8, MutAnyOrigin]]()
+
+
+def system_gpu_driver_len() -> Int32:
+    return external_call["mojoui_system_gpu_driver_len", Int32]()
+
+
+def system_gpu_memory_total_mb() -> Int32:
+    return external_call["mojoui_system_gpu_memory_total_mb", Int32]()
+
+
+def system_gpu_memory_used_mb() -> Int32:
+    return external_call["mojoui_system_gpu_memory_used_mb", Int32]()
+
+
+def system_gpu_util_percent() -> Int32:
+    return external_call["mojoui_system_gpu_util_percent", Int32]()
+
+
+def system_gpu_temperature_c() -> Int32:
+    return external_call["mojoui_system_gpu_temperature_c", Int32]()
+
+
+def system_cpu_name() -> UnsafePointer[Int8, MutAnyOrigin]:
+    return external_call["mojoui_system_cpu_name", UnsafePointer[Int8, MutAnyOrigin]]()
+
+
+def system_cpu_name_len() -> Int32:
+    return external_call["mojoui_system_cpu_name_len", Int32]()
+
+
+def system_cpu_util_percent() -> Int32:
+    return external_call["mojoui_system_cpu_util_percent", Int32]()
+
+
+def system_ram_total_mb() -> Int32:
+    return external_call["mojoui_system_ram_total_mb", Int32]()
+
+
+def system_ram_used_mb() -> Int32:
+    return external_call["mojoui_system_ram_used_mb", Int32]()
 
 
 def destroy_texture(texture_id: UInt32):

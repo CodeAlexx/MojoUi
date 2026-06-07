@@ -174,6 +174,8 @@ int mojoui_render_init(void) {
     sg_desc sgd;
     memset(&sgd, 0, sizeof(sgd));
     sgd.environment = sglue_environment();
+    sgd.image_pool_size = 2048;
+    sgd.view_pool_size = 4096;
     sgd.logger.func = slog_func;
     sg_setup(&sgd);
     if (!sg_isvalid()) {

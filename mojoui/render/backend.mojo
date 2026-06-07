@@ -56,6 +56,30 @@ from mojoui.render.ffi import (
     max_batch_verts as _ffi_max_batch_verts,
     max_batch_indices as _ffi_max_batch_indices,
     make_texture as _ffi_make_texture,
+    load_texture_file as _ffi_load_texture_file,
+    is_video_file as _ffi_is_video_file,
+    load_video_thumbnail as _ffi_load_video_thumbnail,
+    open_video_file as _ffi_open_video_file,
+    media_scan_clear as _ffi_media_scan_clear,
+    media_scan_dir as _ffi_media_scan_dir,
+    media_scan_count as _ffi_media_scan_count,
+    media_scan_path as _ffi_media_scan_path,
+    media_scan_path_len as _ffi_media_scan_path_len,
+    media_scan_is_video as _ffi_media_scan_is_video,
+    refresh_system_metrics as _ffi_refresh_system_metrics,
+    system_gpu_name as _ffi_system_gpu_name,
+    system_gpu_name_len as _ffi_system_gpu_name_len,
+    system_gpu_driver as _ffi_system_gpu_driver,
+    system_gpu_driver_len as _ffi_system_gpu_driver_len,
+    system_gpu_memory_total_mb as _ffi_system_gpu_memory_total_mb,
+    system_gpu_memory_used_mb as _ffi_system_gpu_memory_used_mb,
+    system_gpu_util_percent as _ffi_system_gpu_util_percent,
+    system_gpu_temperature_c as _ffi_system_gpu_temperature_c,
+    system_cpu_name as _ffi_system_cpu_name,
+    system_cpu_name_len as _ffi_system_cpu_name_len,
+    system_cpu_util_percent as _ffi_system_cpu_util_percent,
+    system_ram_total_mb as _ffi_system_ram_total_mb,
+    system_ram_used_mb as _ffi_system_ram_used_mb,
     destroy_texture as _ffi_destroy_texture,
     load_font as _ffi_load_font,
     destroy_font as _ffi_destroy_font,
@@ -64,6 +88,68 @@ from mojoui.render.ffi import (
     text_height as _ffi_text_height,
     draw_text as _ffi_draw_text,
 )
+
+
+struct LoadedTexture(Copyable, Movable):
+    """Texture id plus decoded/scaled dimensions from the C image loader."""
+
+    var texture_id: UInt32
+    var width: Int32
+    var height: Int32
+
+    def __init__(out self):
+        self.texture_id = UInt32(0)
+        self.width = 0
+        self.height = 0
+
+    def __init__(out self, texture_id: UInt32, width: Int32, height: Int32):
+        self.texture_id = texture_id
+        self.width = width
+        self.height = height
+
+
+struct MediaFile(Copyable, Movable):
+    """C-scanned media path plus type flag."""
+
+    var path: String
+    var is_video: Bool
+
+    def __init__(out self):
+        self.path = String("")
+        self.is_video = False
+
+    def __init__(out self, path: String, is_video: Bool):
+        self.path = path.copy()
+        self.is_video = is_video
+
+
+struct SystemMetrics(Copyable, Movable):
+    """Host/GPU metrics read through MojoUI's reusable C floor."""
+
+    var gpu_available: Bool
+    var gpu_name: String
+    var gpu_driver: String
+    var gpu_memory_total_mb: Int32
+    var gpu_memory_used_mb: Int32
+    var gpu_util_percent: Int32
+    var gpu_temperature_c: Int32
+    var cpu_name: String
+    var cpu_util_percent: Int32
+    var ram_total_mb: Int32
+    var ram_used_mb: Int32
+
+    def __init__(out self):
+        self.gpu_available = False
+        self.gpu_name = String("")
+        self.gpu_driver = String("")
+        self.gpu_memory_total_mb = 0
+        self.gpu_memory_used_mb = 0
+        self.gpu_util_percent = 0
+        self.gpu_temperature_c = 0
+        self.cpu_name = String("")
+        self.cpu_util_percent = 0
+        self.ram_total_mb = 0
+        self.ram_used_mb = 0
 
 
 # ============================================================
@@ -420,6 +506,120 @@ struct Backend:
         if len(rgba_pixels) < expected:
             return UInt32(0)
         return _ffi_make_texture(width, height, rgba_pixels.unsafe_ptr())
+
+    @staticmethod
+    def load_texture_file(path: String, max_width: Int32 = 512, max_height: Int32 = 512) -> UInt32:
+        """Decode an image file, scale it to fit, upload as RGBA8, return texture id."""
+        return Backend.load_texture_file_info(path, max_width, max_height).texture_id
+
+    @staticmethod
+    def load_texture_file_info(path: String, max_width: Int32 = 512, max_height: Int32 = 512) -> LoadedTexture:
+        """Decode an image file, scale it to fit, upload as RGBA8, and return
+        texture id plus the uploaded dimensions."""
+        var width: Int32 = 0
+        var height: Int32 = 0
+        var texture_id = _ffi_load_texture_file(
+            path,
+            max_width,
+            max_height,
+            UnsafePointer(to=width),
+            UnsafePointer(to=height),
+        )
+        return LoadedTexture(texture_id, width, height)
+
+    @staticmethod
+    def is_video_file(path: String) -> Bool:
+        """True for common video extensions handled by MojoUI media helpers."""
+        return _ffi_is_video_file(path) != 0
+
+    @staticmethod
+    def load_video_thumbnail_info(path: String, max_width: Int32 = 512, max_height: Int32 = 512) -> LoadedTexture:
+        """Extract a video frame through the C floor, upload as RGBA8, and
+        return texture id plus decoded dimensions."""
+        var width: Int32 = 0
+        var height: Int32 = 0
+        var texture_id = _ffi_load_video_thumbnail(
+            path,
+            max_width,
+            max_height,
+            UnsafePointer(to=width),
+            UnsafePointer(to=height),
+        )
+        return LoadedTexture(texture_id, width, height)
+
+    @staticmethod
+    def open_video_file(path: String) -> Bool:
+        """Open a video through the desktop player. Returns True if launch started."""
+        return _ffi_open_video_file(path) != 0
+
+    @staticmethod
+    def scan_media_files(path: String, recursive: Bool = True, max_items: Int32 = 4096) raises -> List[MediaFile]:
+        """Scan a folder for common image/video files and copy the result list
+        into Mojo-owned `MediaFile` values."""
+        var recursive_i: Int32 = 0
+        if recursive:
+            recursive_i = 1
+        var count = _ffi_media_scan_dir(path, recursive_i, max_items)
+        if count < 0:
+            count = 0
+        var actual = _ffi_media_scan_count()
+        if actual < count:
+            count = actual
+        var out = List[MediaFile]()
+        for i in range(Int(count)):
+            var idx = Int32(i)
+            var n = _ffi_media_scan_path_len(idx)
+            if n <= 0:
+                continue
+            var ptr_i8 = _ffi_media_scan_path(idx)
+            var ptr_u8 = ptr_i8.bitcast[UInt8]()
+            var bytes = List[UInt8](capacity=Int(n))
+            for j in range(Int(n)):
+                bytes.append(ptr_u8[j])
+            var media_path = String(unsafe_from_utf8=bytes)
+            out.append(MediaFile(media_path, _ffi_media_scan_is_video(idx) != 0))
+        return out^
+
+    @staticmethod
+    def clear_media_scan_cache():
+        """Free the C-owned media scan cache."""
+        _ffi_media_scan_clear()
+
+    @staticmethod
+    def system_metrics() -> SystemMetrics:
+        """Refresh and return host/GPU metrics. Headless-safe; unavailable GPU
+        data returns `gpu_available=False` and zero numeric values."""
+        var metrics = SystemMetrics()
+        metrics.gpu_available = _ffi_refresh_system_metrics() != 0
+        var name_len = _ffi_system_gpu_name_len()
+        if name_len > 0:
+            var name_ptr = _ffi_system_gpu_name().bitcast[UInt8]()
+            var name_bytes = List[UInt8](capacity=Int(name_len))
+            for i in range(Int(name_len)):
+                name_bytes.append(name_ptr[i])
+            metrics.gpu_name = String(unsafe_from_utf8=name_bytes)
+        var driver_len = _ffi_system_gpu_driver_len()
+        if driver_len > 0:
+            var driver_ptr = _ffi_system_gpu_driver().bitcast[UInt8]()
+            var driver_bytes = List[UInt8](capacity=Int(driver_len))
+            for i in range(Int(driver_len)):
+                driver_bytes.append(driver_ptr[i])
+            metrics.gpu_driver = String(unsafe_from_utf8=driver_bytes)
+        metrics.gpu_memory_total_mb = _ffi_system_gpu_memory_total_mb()
+        metrics.gpu_memory_used_mb = _ffi_system_gpu_memory_used_mb()
+        metrics.gpu_util_percent = _ffi_system_gpu_util_percent()
+        metrics.gpu_temperature_c = _ffi_system_gpu_temperature_c()
+        var cpu_len = _ffi_system_cpu_name_len()
+        if cpu_len > 0:
+            var cpu_ptr = _ffi_system_cpu_name().bitcast[UInt8]()
+            var cpu_bytes = List[UInt8](capacity=Int(cpu_len))
+            for i in range(Int(cpu_len)):
+                cpu_bytes.append(cpu_ptr[i])
+            metrics.cpu_name = String(unsafe_from_utf8=cpu_bytes)
+        metrics.cpu_util_percent = _ffi_system_cpu_util_percent()
+        metrics.ram_total_mb = _ffi_system_ram_total_mb()
+        metrics.ram_used_mb = _ffi_system_ram_used_mb()
+        return metrics^
 
     @staticmethod
     def destroy_texture(texture_id: UInt32):

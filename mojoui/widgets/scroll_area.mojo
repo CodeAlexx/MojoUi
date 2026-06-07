@@ -62,7 +62,7 @@ What this chunk deliberately does NOT do:
 
 from mojoui.core.types import Vec2, Rect, Color
 from mojoui.core.context import Context
-from mojoui.core.control import CTRL_ACTIVE, OPT_NONE
+from mojoui.core.control import CTRL_ACTIVE, CTRL_HOVERED, OPT_NONE
 
 
 # ============================================================================
@@ -120,6 +120,11 @@ def begin_scroll_area(
         if dy != 0.0:
             scroll_y = scroll_y - dy
             changed = True
+    if (flags & CTRL_HOVERED) != 0:
+        var wheel_y: Float32 = ctx.input.scroll_delta.y
+        if wheel_y != 0.0:
+            scroll_y = scroll_y - wheel_y * 80.0
+            changed = True
 
     # 5. clamp the lower bound. For M2 we do NOT know the content height,
     #    so we only enforce `scroll_y >= 0` (cannot scroll above the top of
@@ -140,7 +145,7 @@ def begin_scroll_area(
         viewport.x,
         viewport.y - scroll_y,
         viewport.w,
-        Float32(area_height) * 4.0,
+        Float32(area_height) * 8.0,
     )
     ctx.layout.push(inner_body^)
 

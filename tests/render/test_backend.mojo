@@ -280,6 +280,19 @@ def test_command_renderer_signature() raises:
         _ = render_command_buffer(buf, String("test"))
 
 
+def test_media_api_signature() raises:
+    """Compile-only proof for image/video/media scanner backend helpers."""
+    var never = False
+    if never:
+        _ = Backend.is_video_file(String("x.mp4"))
+        _ = Backend.load_texture_file(String("x.jpg"))
+        _ = Backend.load_texture_file_info(String("x.jpg"))
+        _ = Backend.load_video_thumbnail_info(String("x.mp4"))
+        _ = Backend.open_video_file(String("x.mp4"))
+        _ = Backend.scan_media_files(String("/tmp"), True, Int32(1))
+        Backend.clear_media_scan_cache()
+
+
 # ============================================================
 # Entry
 # ============================================================
@@ -299,4 +312,5 @@ def main() raises:
     test_static_methods_exist()
     test_input_text_signature()
     test_command_renderer_signature()
+    test_media_api_signature()
     print("PASS: backend smoke (color packing + rect tessellation + API surface)")

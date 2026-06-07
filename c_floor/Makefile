@@ -4,6 +4,9 @@ CFLAGS = -Wall -Wextra -fPIC -O2 -std=c11 -D_POSIX_C_SOURCE=200112L
 # mojoui_shim.h (the consolidated public C ABI consumed by Mojo FFI).
 INC = -I. -Ivendored/sokol -Ivendored/stb
 LDFLAGS_LINUX = -lGL -lX11 -lEGL -lXi -lXcursor -ldl -lm -lpthread
+GDK_PIXBUF_CFLAGS := $(shell pkg-config --cflags gdk-pixbuf-2.0 2>/dev/null)
+GDK_PIXBUF_LIBS := $(shell pkg-config --libs gdk-pixbuf-2.0 2>/dev/null)
+LDFLAGS_LINUX += $(GDK_PIXBUF_LIBS)
 
 SOKOL_DEFINES = -DSOKOL_GLCORE -DSOKOL_NO_ENTRY
 
@@ -25,6 +28,15 @@ endif
 ifneq ($(wildcard mojoui_fonts.c),)
 OBJS += $(OBJ_DIR)/mojoui_fonts.o
 endif
+ifneq ($(wildcard mojoui_image_loader.c),)
+OBJS += $(OBJ_DIR)/mojoui_image_loader.o
+endif
+ifneq ($(wildcard mojoui_video.c),)
+OBJS += $(OBJ_DIR)/mojoui_video.o
+endif
+ifneq ($(wildcard mojoui_system.c),)
+OBJS += $(OBJ_DIR)/mojoui_system.o
+endif
 
 LIB = ../libmojoui_floor.so
 
@@ -43,6 +55,15 @@ $(OBJ_DIR)/mojoui_render.o: mojoui_render.c | $(OBJ_DIR)
 
 $(OBJ_DIR)/mojoui_fonts.o: mojoui_fonts.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -DSTB_TRUETYPE_IMPLEMENTATION $(INC) -c $< -o $@
+
+$(OBJ_DIR)/mojoui_image_loader.o: mojoui_image_loader.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) $(GDK_PIXBUF_CFLAGS) $(INC) -c $< -o $@
+
+$(OBJ_DIR)/mojoui_video.o: mojoui_video.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) $(INC) -c $< -o $@
+
+$(OBJ_DIR)/mojoui_system.o: mojoui_system.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) $(INC) -c $< -o $@
 
 $(LIB): $(OBJS)
 	$(CC) -shared -o $@ $^ $(LDFLAGS_LINUX)
