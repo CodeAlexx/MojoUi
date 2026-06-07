@@ -162,6 +162,13 @@ struct CanvasState(Movable):
     """Multi-select set. `selected_node` remains the primary/last-selected
     id for backward compatibility with existing app code."""
 
+    var resizing_node: RetainedId
+    """Node currently being resized from its bottom-right handle."""
+
+    var resize_start_mouse_world: Vec2
+    var resize_start_size: Vec2
+    """World-space mouse and node size captured at resize start."""
+
     var marquee_active: Bool
     """True while an empty-canvas left drag is drawing a selection box."""
 
@@ -251,6 +258,9 @@ struct CanvasState(Movable):
         self.dragging_node = RET_ID_NONE
         self.drag_offset = Vec2.zero()
         self.selected_node = RET_ID_NONE
+        self.resizing_node = RET_ID_NONE
+        self.resize_start_mouse_world = Vec2.zero()
+        self.resize_start_size = Vec2.zero()
         self.wire_drag_from_node = RET_ID_NONE
         self.wire_drag_from_port = String("")
         self.wire_drag_from_is_output = False
@@ -619,6 +629,7 @@ def canvas_delete_selection(mut state: CanvasState, mut graph: Graph) -> Int:
     if removed > 0:
         canvas_clear_selection(state)
         state.dragging_node = RET_ID_NONE
+        state.resizing_node = RET_ID_NONE
         state.dragging_group = Int64(-1)
         _clear_wire_drag(state)
     return removed

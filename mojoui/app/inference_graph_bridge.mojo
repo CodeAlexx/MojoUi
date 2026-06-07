@@ -259,7 +259,7 @@ def _add_checkpoint(mut graph: Graph, model_name: String) raises -> RetainedId:
     var id = graph.add_node(String("CheckpointLoaderSimple"), Vec2(40.0, 110.0))
     var idx = _node_mut_index(graph, id)
     graph.nodes[idx].with_title(String("Load Klein 9B Checkpoint"))
-    graph.nodes[idx].with_size(Vec2(270.0, 105.0))
+    graph.nodes[idx].with_size(Vec2(380.0, 150.0))
     graph.nodes[idx].add_output(PortRef(String("MODEL"), NVT_MODEL))
     graph.nodes[idx].add_output(PortRef(String("CLIP"), NVT_CLIP))
     graph.nodes[idx].add_output(PortRef(String("VAE"), NVT_VAE))
@@ -276,7 +276,7 @@ def _add_clip_encode(
     var id = graph.add_node(String("CLIPTextEncode"), pos)
     var idx = _node_mut_index(graph, id)
     graph.nodes[idx].with_title(title)
-    graph.nodes[idx].with_size(Vec2(320.0, 120.0))
+    graph.nodes[idx].with_size(Vec2(460.0, 170.0))
     graph.nodes[idx].add_input(PortRef(String("clip"), NVT_CLIP))
     graph.nodes[idx].add_output(PortRef(String("CONDITIONING"), NVT_CONDITIONING))
     _set_string(graph.nodes[idx], String("text"), text)
@@ -289,10 +289,10 @@ def _add_empty_latent(
     height: Int32,
     batch: Int32,
 ) raises -> RetainedId:
-    var id = graph.add_node(String("EmptyLatentImage"), Vec2(420.0, 330.0))
+    var id = graph.add_node(String("EmptyLatentImage"), Vec2(520.0, 465.0))
     var idx = _node_mut_index(graph, id)
     graph.nodes[idx].with_title(String("Empty Latent Image"))
-    graph.nodes[idx].with_size(Vec2(250.0, 105.0))
+    graph.nodes[idx].with_size(Vec2(360.0, 145.0))
     graph.nodes[idx].add_output(PortRef(String("LATENT"), NVT_LATENT))
     _set_int(graph.nodes[idx], String("width"), Int64(width))
     _set_int(graph.nodes[idx], String("height"), Int64(height))
@@ -308,10 +308,10 @@ def _add_sampler(
     sampler: String,
     scheduler: String,
 ) raises -> RetainedId:
-    var id = graph.add_node(String("KSampler"), Vec2(780.0, 210.0))
+    var id = graph.add_node(String("KSampler"), Vec2(1080.0, 220.0))
     var idx = _node_mut_index(graph, id)
     graph.nodes[idx].with_title(String("K-Sampler"))
-    graph.nodes[idx].with_size(Vec2(285.0, 170.0))
+    graph.nodes[idx].with_size(Vec2(430.0, 260.0))
     graph.nodes[idx].add_input(PortRef(String("model"), NVT_MODEL))
     graph.nodes[idx].add_input(PortRef(String("positive"), NVT_CONDITIONING))
     graph.nodes[idx].add_input(PortRef(String("negative"), NVT_CONDITIONING))
@@ -327,10 +327,10 @@ def _add_sampler(
 
 
 def _add_vae_decode(mut graph: Graph, output_path: String) raises -> RetainedId:
-    var id = graph.add_node(String("VAEDecode"), Vec2(1120.0, 245.0))
+    var id = graph.add_node(String("VAEDecode"), Vec2(1585.0, 515.0))
     var idx = _node_mut_index(graph, id)
     graph.nodes[idx].with_title(String("VAE Decode"))
-    graph.nodes[idx].with_size(Vec2(245.0, 105.0))
+    graph.nodes[idx].with_size(Vec2(360.0, 145.0))
     graph.nodes[idx].add_input(PortRef(String("samples"), NVT_LATENT))
     graph.nodes[idx].add_input(PortRef(String("vae"), NVT_VAE))
     graph.nodes[idx].add_output(PortRef(String("IMAGE"), NVT_IMAGE))
@@ -339,10 +339,10 @@ def _add_vae_decode(mut graph: Graph, output_path: String) raises -> RetainedId:
 
 
 def _add_save_image(mut graph: Graph, output_path: String) raises -> RetainedId:
-    var id = graph.add_node(String("SaveImage"), Vec2(1460.0, 250.0))
+    var id = graph.add_node(String("SaveImage"), Vec2(2045.0, 515.0))
     var idx = _node_mut_index(graph, id)
     graph.nodes[idx].with_title(String("Save / Preview Image"))
-    graph.nodes[idx].with_size(Vec2(270.0, 95.0))
+    graph.nodes[idx].with_size(Vec2(400.0, 185.0))
     graph.nodes[idx].add_input(PortRef(String("images"), NVT_IMAGE))
     _set_string(graph.nodes[idx], String("output_path"), output_path)
     return id
@@ -362,13 +362,13 @@ def build_klein9b_inference_graph(
         graph,
         String("Positive Prompt"),
         display.prompt.copy(),
-        Vec2(420.0, 80.0),
+        Vec2(520.0, 70.0),
     )
     var neg = _add_clip_encode(
         graph,
         String("Negative Prompt"),
         state.negative.copy(),
-        Vec2(420.0, 200.0),
+        Vec2(520.0, 265.0),
     )
     var latent = _add_empty_latent(
         graph,

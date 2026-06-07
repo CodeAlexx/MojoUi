@@ -59,6 +59,7 @@ from mojoui.nodes.node_menu import (
     NODE_ACTION_DELETE,
     NODE_ACTION_DUPLICATE,
     NODE_ACTION_RENAME,
+    NODE_ACTION_COLOR,
 )
 from mojoui.nodes.progress import (
     ProgressState,
@@ -68,12 +69,19 @@ from mojoui.nodes.progress import (
 )
 from mojoui.app.state import store_user_state, retrieve_user_state
 from mojoui.app.inference_model import InferenceState, QueueJob
-from mojoui.app.inference_graph_bridge import build_klein9b_inference_graph
+from mojoui.app.inference_graph_bridge import (
+    build_klein9b_inference_graph,
+    _sys_system,
+    _write_text_file,
+)
 from mojoui.serde.comfy_workflow import parse_comfy_workflow
+from mojoui.serde.workflow import emit_workflow, parse_workflow
 
 
 comptime _TOOLBAR_H: Float32 = 56.0
 comptime _RUN_FRAMES_PER_NODE: Int = 24
+comptime _PERSIST_DIR = "/home/alex/.cache/serenityui"
+comptime _PERSIST_WORKFLOW = "/home/alex/.cache/serenityui/klein9b_nodegraph.workflow.json"
 
 
 struct NodeGraphDemoState(Movable):
@@ -119,19 +127,26 @@ struct NodeGraphDemoState(Movable):
             Int32(1024),
             Int32(1024),
         )
+        try:
+            var file = open(String(_PERSIST_WORKFLOW), String("r"))
+            var saved = parse_workflow(file.read())
+            if saved.node_count() > 0:
+                g = saved^
+        except e:
+            pass
 
         self.registry = reg^
         self.graph = g^
         var canvas = CanvasState()
-        canvas.pan = Vec2(100.0, 96.0)
-        canvas.zoom = Float32(1.0)
+        canvas.pan = Vec2(110.0, 115.0)
+        canvas.zoom = Float32(1.30)
         canvas.show_minimap = True
         canvas.snap_to_grid = True
 
         var klein_group = CanvasGroup(
             Int64(1),
             String("SerenityUI Klein 9B Generate Workflow"),
-            Rect(20.0, 40.0, 1785.0, 460.0),
+            Rect(20.0, 35.0, 2500.0, 840.0),
             Color(64, 118, 210, 68),
         )
         for i in range(self.graph.node_count()):
@@ -234,6 +249,14 @@ def _import_demo_comfy_json(mut s: NodeGraphDemoState, win_w: Float32, win_h: Fl
     s.last_action = String("imported Comfy workflow JSON: /home/alex/Downloads/image_ideogram4_t2i.json")
 
 
+def _autosave_workflow(s: NodeGraphDemoState):
+    try:
+        _ = _sys_system(String("mkdir -p ") + String(_PERSIST_DIR))
+        _write_text_file(String(_PERSIST_WORKFLOW), emit_workflow(s.graph))
+    except e:
+        pass
+
+
 def _ui(mut s: NodeGraphDemoState, win_w: Float32, win_h: Float32) raises:
     ref ctx = s.ctx
 
@@ -251,15 +274,17 @@ def _ui(mut s: NodeGraphDemoState, win_w: Float32, win_h: Float32) raises:
     var cw = List[Int32]()
     cw.append(Int32(Int(win_w)))
     ctx.layout_row(cw^, Int32(Int(win_h - _TOOLBAR_H)))
-    _ = begin_node_canvas(ctx, String("nodes"), s.canvas, s.graph)
+    var canvas_changed = begin_node_canvas(ctx, String("nodes"), s.canvas, s.graph)
     end_node_canvas(ctx)
 
     if s.canvas.generate_requested:
         _start_run(s)
     if s.canvas.add_image_requested:
         _add_demo_image_node(s)
+        canvas_changed = True
     if s.canvas.import_json_requested:
         _import_demo_comfy_json(s, win_w, win_h)
+        canvas_changed = True
 
     # ---- Right-click on empty canvas → add-node menu ----
     # begin_node_canvas already opened the per-node menu if RMB hit a node
@@ -277,8 +302,10 @@ def _ui(mut s: NodeGraphDemoState, win_w: Float32, win_h: Float32) raises:
     var act = node_context_menu(ctx, String("node_ctx"), s.canvas, s.graph)
     if act == NODE_ACTION_DELETE:
         s.last_action = String("deleted node")
+        canvas_changed = True
     elif act == NODE_ACTION_DUPLICATE:
         s.last_action = String("duplicated node")
+        canvas_changed = True
     elif act == NODE_ACTION_RENAME:
         # Seed the rename buffer from the target node's current title.
         var idx = s.graph.find_node(s.canvas.renaming_node)
@@ -286,10 +313,14 @@ def _ui(mut s: NodeGraphDemoState, win_w: Float32, win_h: Float32) raises:
             s.rename_buffer = s.graph.nodes[idx].title.copy()
             s.rename_state = TextEditState(single_line=True)
         s.last_action = String("renaming — click the top field, type, Enter")
+    elif act == NODE_ACTION_COLOR:
+        s.last_action = String("cycled node color")
+        canvas_changed = True
 
     # ---- Add-node menu overlay ----
     if add_menu(ctx, String("add_menu"), s.addmenu, s.registry, s.graph):
         s.last_action = String("added node")
+        canvas_changed = True
 
     # ---- Rename commit / cancel ----
     if renaming:
@@ -299,9 +330,13 @@ def _ui(mut s: NodeGraphDemoState, win_w: Float32, win_h: Float32) raises:
                 s.graph.nodes[idx].title = s.rename_buffer.copy()
             s.last_action = String("renamed → ") + s.rename_buffer
             s.canvas.renaming_node = UInt64(0)
+            canvas_changed = True
         elif ctx.input.key_pressed(MOJOUI_KEY_ESCAPE):
             s.canvas.renaming_node = UInt64(0)
             s.last_action = String("rename cancelled")
+
+    if canvas_changed:
+        _autosave_workflow(s)
 
     # ---- Run simulation controls ----
     if ctx.input.key_pressed(MOJOUI_KEY_P) and not s.run_active:

@@ -39,10 +39,10 @@ from mojoui.nodes.node import (
 from mojoui.render.tessellator import tess_rounded_rect
 
 
-comptime _BODY_LINE_H: Float32 = 22.0
+comptime _BODY_LINE_H: Float32 = 26.0
 """Vertical pitch between field rows (screen px at zoom == 1)."""
 
-comptime _BODY_PAD_X: Float32 = 12.0
+comptime _BODY_PAD_X: Float32 = 14.0
 """Left inset of field text from the node's left edge."""
 
 comptime _BODY_PAD_Y: Float32 = 8.0
@@ -50,7 +50,7 @@ comptime _BODY_PAD_Y: Float32 = 8.0
 node's bottom edge where rows stop."""
 
 comptime _FIELD_RADIUS: Float32 = 6.0
-comptime _FIELD_H: Float32 = 21.0
+comptime _FIELD_H: Float32 = 24.0
 comptime _FIELD_ARROW_W: Float32 = 18.0
 
 
@@ -109,6 +109,7 @@ def _is_image_node(node: Node) -> Bool:
     return (
         node.type_id == String("core/load_image")
         or node.type_id == String("core/save_image")
+        or node.type_id == String("SaveImage")
         or node.type_id == String("core/ideogram4_generate")
     )
 
@@ -237,6 +238,7 @@ def draw_node_body(
     """
     if ctx.theme.font_id == 0:
         return
+    var body_font = ctx.theme.font_size_pt + 2
     var keys = _sorted_field_keys(node)
     var n = len(keys)
     var x = node_rect.x + _BODY_PAD_X
@@ -263,8 +265,8 @@ def draw_node_body(
         var value_w = row_w - label_w - Float32(12.0)
         if value_w < Float32(24.0):
             value_w = Float32(24.0)
-        var key_label = _truncate_for_width(key.copy(), label_w - Float32(12.0), ctx.theme.font_size_pt)
-        var value_label = _truncate_for_width(_field_value_str(fv), value_w, ctx.theme.font_size_pt)
+        var key_label = _truncate_for_width(key.copy(), label_w - Float32(12.0), body_font)
+        var value_label = _truncate_for_width(_field_value_str(fv), value_w, body_font)
         var pill = Rect(x, row_y, row_w, _FIELD_H)
         tess_rounded_rect(
             ctx,
@@ -285,15 +287,15 @@ def draw_node_body(
         )
         ctx.draw_text(
             ctx.theme.font_id,
-            ctx.theme.font_size_pt,
-            Vec2(x + Float32(9.0), row_y + Float32(15.0)),
+            body_font,
+            Vec2(x + Float32(9.0), row_y + Float32(17.0)),
             Color(168, 176, 196, 255),
             key_label,
         )
         ctx.draw_text(
             ctx.theme.font_id,
-            ctx.theme.font_size_pt,
-            Vec2(pill.x + label_w + Float32(8.0), row_y + Float32(15.0)),
+            body_font,
+            Vec2(pill.x + label_w + Float32(8.0), row_y + Float32(17.0)),
             Color(232, 235, 244, 255),
             value_label,
         )

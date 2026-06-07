@@ -128,6 +128,11 @@ def emit_workflow(graph: Graph) raises -> String:
         pos_obj.set_object_field(String("y"), JsonValue.number(Float64(graph.nodes[ni].position.y)))
         n_obj.set_object_field(String("position"), pos_obj)
 
+        var size_obj = JsonValue.empty_object()
+        size_obj.set_object_field(String("x"), JsonValue.number(Float64(graph.nodes[ni].size.x)))
+        size_obj.set_object_field(String("y"), JsonValue.number(Float64(graph.nodes[ni].size.y)))
+        n_obj.set_object_field(String("size"), size_obj)
+
         # Fields dict → JSON object. The c37 Dict-aliasing wall requires us
         # to materialize the keys into a List[String] first, then index by
         # integer position, rather than iterating `for k in d.keys():` and
@@ -273,6 +278,18 @@ def _parse_node(n_val: JsonValue) raises -> Node:
         if y_val.kind == JK_NUMBER:
             py = Float32(y_val.num_val)
         node.position = Vec2(px, py)
+
+    var size_val = n_val.get_object_field(String("size"))
+    if size_val.kind == JK_OBJECT:
+        var w_val = size_val.get_object_field(String("x"))
+        var h_val = size_val.get_object_field(String("y"))
+        var sx = node.size.x
+        var sy = node.size.y
+        if w_val.kind == JK_NUMBER:
+            sx = Float32(w_val.num_val)
+        if h_val.kind == JK_NUMBER:
+            sy = Float32(h_val.num_val)
+        node.size = Vec2(sx, sy)
 
     var fields_val = n_val.get_object_field(String("fields"))
     if fields_val.kind == JK_OBJECT:

@@ -3,15 +3,16 @@
 Coverage:
   (1)  Empty graph emit/parse round-trip: 0 nodes / 0 edges preserved.
   (2)  Single-node round-trip: id / type_id / position preserved.
-  (3)  Node with fields (string + number + bool): preserved across r-trip.
-  (4)  Multi-node linear chain (3 nodes, 2 edges) — port names preserved.
-  (5)  Emit contains the `"version":1` substring.
-  (6)  Parse rejects `version: 2` with UnsupportedVersion.
-  (7)  Parse rejects malformed JSON.
-  (8)  Byte-equivalent round-trip: emit(parse(emit(g))) == emit(g).
-  (9)  FieldValue round-trip across all 4 kinds (note INT collapses to
+  (3)  Node size round-trip: persisted layout dimensions are preserved.
+  (4)  Node with fields (string + number + bool): preserved across r-trip.
+  (5)  Multi-node linear chain (3 nodes, 2 edges) — port names preserved.
+  (6)  Emit contains the `"version":1` substring.
+  (7)  Parse rejects `version: 2` with UnsupportedVersion.
+  (8)  Parse rejects malformed JSON.
+  (9)  Byte-equivalent round-trip: emit(parse(emit(g))) == emit(g).
+  (10) FieldValue round-trip across all 4 kinds (note INT collapses to
        NUMBER per the JSON number-type limitation).
-  (10) Empty fields dict round-trips as the empty object `{}`.
+  (11) Empty fields dict round-trips as the empty object `{}`.
 """
 
 from mojoui.core.types import Vec2
@@ -81,6 +82,23 @@ def test_single_node_round_trip() raises:
     var p = g2.nodes[0].position.copy()
     if p.x != 40.0 or p.y != 80.0:
         raise Error("single-node: position mismatch")
+
+
+def test_node_size_round_trip() raises:
+    var g = Graph()
+    var _nid = g.add_node(String("core/k_sampler"), Vec2(0.0, 0.0))
+    g.nodes[0].size = Vec2(420.0, 275.0)
+    var json = emit_workflow(g)
+    var g2 = parse_workflow(json)
+    if g2.node_count() != 1:
+        raise Error("size: expected 1 node")
+    if g2.nodes[0].size.x != 420.0 or g2.nodes[0].size.y != 275.0:
+        raise Error(
+            "size: expected 420x275, got "
+            + String(g2.nodes[0].size.x)
+            + "x"
+            + String(g2.nodes[0].size.y)
+        )
 
 
 def test_node_with_fields_round_trip() raises:
@@ -399,6 +417,7 @@ def test_parse_seeds_id_alloc_past_loaded_ids() raises:
 def main() raises:
     test_empty_graph_round_trip()
     test_single_node_round_trip()
+    test_node_size_round_trip()
     test_node_with_fields_round_trip()
     test_multi_node_edges_round_trip()
     test_emit_contains_version_one()
@@ -409,4 +428,4 @@ def main() raises:
     test_empty_fields_dict_round_trip()
     test_parse_rejects_v99_in_large_workflow()
     test_parse_seeds_id_alloc_past_loaded_ids()
-    print("PASS: all 12 workflow smoke tests")
+    print("PASS: all 13 workflow smoke tests")

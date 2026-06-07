@@ -175,6 +175,9 @@ comptime _PORT_HIT_RADIUS: Float32 = 9.0
 comptime _PORT_RING_RADIUS: Float32 = 6.0
 comptime _NODE_RADIUS: Float32 = 8.0
 comptime _NODE_SHADOW_BLUR: Float32 = 5.0
+comptime _NODE_RESIZE_HANDLE: Float32 = 18.0
+comptime _NODE_MIN_W: Float32 = 180.0
+comptime _NODE_MIN_H: Float32 = 82.0
 comptime _GRID_MINOR_WORLD: Float32 = 32.0
 comptime _GRID_MAJOR_WORLD: Float32 = 128.0
 comptime _SNAP_GRID_WORLD: Float32 = 20.0
@@ -247,10 +250,10 @@ comptime _WIRE_HIT_DIST: Float32 = 6.0
 # idle wires). Selected is thickest so it reads as "armed for delete".
 comptime _WIRE_HOVER_THICKNESS: Float32 = 3.5
 comptime _WIRE_SELECT_THICKNESS: Float32 = 4.5
-comptime _FIELD_BODY_LINE_H: Float32 = 22.0
-comptime _FIELD_BODY_PAD_X: Float32 = 12.0
+comptime _FIELD_BODY_LINE_H: Float32 = 26.0
+comptime _FIELD_BODY_PAD_X: Float32 = 14.0
 comptime _FIELD_BODY_PAD_Y: Float32 = 8.0
-comptime _FIELD_BODY_H: Float32 = 21.0
+comptime _FIELD_BODY_H: Float32 = 24.0
 comptime _FIELD_BODY_GAP: Float32 = 3.0
 comptime _BBOX_DRAG_NONE: Int32 = 0
 comptime _BBOX_DRAG_MOVE: Int32 = 1
@@ -1440,7 +1443,73 @@ def _commit_field_edit(mut state: CanvasState, mut graph: Graph) raises -> Bool:
     return True
 
 
-def _node_body_color(node: Node, selected: Bool) -> Color:
+def _is_checkpoint_visual_node(node: Node) -> Bool:
+    return (
+        node.type_id == String("core/load_checkpoint")
+        or node.type_id == String("CheckpointLoaderSimple")
+        or node.title == String("Load Diffusion Model")
+        or node.title == String("Load Klein 9B Checkpoint")
+    )
+
+
+def _is_clip_visual_node(node: Node) -> Bool:
+    return (
+        node.type_id == String("core/encode_prompt")
+        or node.type_id == String("CLIPTextEncode")
+        or node.title == String("Load CLIP")
+        or node.title == String("Positive Prompt")
+        or node.title == String("Negative Prompt")
+    )
+
+
+def _is_latent_visual_node(node: Node) -> Bool:
+    return node.type_id == String("EmptyLatentImage")
+
+
+def _is_sampler_visual_node(node: Node) -> Bool:
+    return (
+        node.type_id == String("core/k_sampler")
+        or node.type_id == String("KSampler")
+        or node.title == String("Load LoRA")
+        or node.title == String("K-Sampler")
+    )
+
+
+def _is_vae_visual_node(node: Node) -> Bool:
+    return (
+        node.type_id == String("core/vae_decode")
+        or node.type_id == String("VAEDecode")
+        or node.title == String("Load VAE")
+        or node.title == String("VAE Decode")
+    )
+
+
+def _is_save_image_visual_node(node: Node) -> Bool:
+    return node.type_id == String("core/save_image") or node.type_id == String("SaveImage")
+
+
+def _node_ui_color(node: Node) raises -> String:
+    if String("ui_color") in node.fields:
+        var fv = node.fields[String("ui_color")].copy()
+        if fv.kind == FK_STRING and fv.str_val.byte_length() > 0:
+            return fv.str_val.copy()
+    return String("default")
+
+
+def _node_body_color(node: Node, selected: Bool) raises -> Color:
+    var override = _node_ui_color(node)
+    if override == String("gold"):
+        return Color(112, 95, 48, 246) if selected else Color(96, 82, 42, 238)
+    if override == String("blue"):
+        return Color(44, 76, 116, 246) if selected else Color(34, 56, 88, 238)
+    if override == String("purple"):
+        return Color(75, 62, 116, 246) if selected else Color(55, 46, 88, 238)
+    if override == String("green"):
+        return Color(52, 92, 64, 246) if selected else Color(38, 68, 48, 238)
+    if override == String("teal"):
+        return Color(42, 88, 96, 246) if selected else Color(32, 66, 74, 238)
+    if override == String("gray"):
+        return Color(68, 70, 78, 246) if selected else Color(50, 52, 60, 238)
     if node.type_id == String("core/load_image"):
         if selected:
             return Color(46, 82, 62, 246)
@@ -1457,32 +1526,49 @@ def _node_body_color(node: Node, selected: Bool) -> Color:
         if selected:
             return Color(62, 58, 94, 246)
         return Color(45, 43, 68, 238)
-    if node.type_id == String("core/load_checkpoint") or node.title == String("Load Diffusion Model"):
+    if _is_checkpoint_visual_node(node):
         if selected:
             return Color(112, 95, 48, 246)
         return Color(96, 82, 42, 238)
-    if node.type_id == String("core/vae_decode") or node.title == String("Load VAE"):
+    if _is_vae_visual_node(node):
+        if selected:
+            return Color(46, 90, 98, 246)
+        return Color(35, 68, 76, 238)
+    if _is_clip_visual_node(node):
         if selected:
             return Color(108, 84, 46, 246)
         return Color(89, 70, 39, 238)
-    if node.type_id == String("core/encode_prompt") or node.title == String("Load CLIP"):
+    if _is_latent_visual_node(node):
         if selected:
-            return Color(101, 85, 48, 246)
-        return Color(83, 70, 41, 238)
-    if node.type_id == String("core/k_sampler") or node.title == String("Load LoRA"):
+            return Color(42, 76, 92, 246)
+        return Color(32, 58, 72, 238)
+    if _is_sampler_visual_node(node):
         if selected:
             return Color(61, 60, 108, 246)
         return Color(49, 49, 88, 238)
-    if node.type_id == String("core/save_image"):
+    if _is_save_image_visual_node(node):
         if selected:
-            return Color(64, 64, 70, 246)
-        return Color(50, 50, 56, 238)
+            return Color(52, 84, 62, 246)
+        return Color(38, 64, 48, 238)
     if selected:
         return Color(58, 60, 88, 246)
     return Color(42, 43, 52, 238)
 
 
-def _node_title_color(node: Node) -> Color:
+def _node_title_color(node: Node) raises -> Color:
+    var override = _node_ui_color(node)
+    if override == String("gold"):
+        return Color(72, 52, 30, 255)
+    if override == String("blue"):
+        return Color(24, 48, 82, 255)
+    if override == String("purple"):
+        return Color(42, 32, 78, 255)
+    if override == String("green"):
+        return Color(24, 62, 36, 255)
+    if override == String("teal"):
+        return Color(22, 58, 66, 255)
+    if override == String("gray"):
+        return Color(44, 44, 50, 255)
     if node.type_id == String("core/load_image"):
         return Color(30, 72, 46, 255)
     if node.type_id == String("core/load_video") or node.type_id == String("core/preview_video"):
@@ -1491,20 +1577,35 @@ def _node_title_color(node: Node) -> Color:
         return Color(34, 52, 92, 255)
     if node.type_id == String("core/ideogram4_magic_prompt") or node.type_id == String("core/ideogram4_generate"):
         return Color(50, 42, 86, 255)
-    if node.type_id == String("core/load_checkpoint") or node.title == String("Load Diffusion Model"):
+    if _is_checkpoint_visual_node(node):
         return Color(62, 46, 34, 255)
-    if node.type_id == String("core/vae_decode") or node.title == String("Load VAE"):
-        return Color(61, 44, 32, 255)
-    if node.type_id == String("core/encode_prompt") or node.title == String("Load CLIP"):
+    if _is_vae_visual_node(node):
+        return Color(24, 58, 66, 255)
+    if _is_clip_visual_node(node):
         return Color(62, 46, 34, 255)
-    if node.type_id == String("core/k_sampler") or node.title == String("Load LoRA"):
+    if _is_latent_visual_node(node):
+        return Color(22, 52, 66, 255)
+    if _is_sampler_visual_node(node):
         return Color(31, 30, 55, 255)
-    if node.type_id == String("core/save_image"):
-        return Color(44, 44, 48, 255)
+    if _is_save_image_visual_node(node):
+        return Color(28, 58, 38, 255)
     return Color(36, 38, 48, 255)
 
 
-def _node_socket_glyph_color(node: Node) -> Color:
+def _node_socket_glyph_color(node: Node) raises -> Color:
+    var override = _node_ui_color(node)
+    if override == String("gold"):
+        return Color(232, 184, 72, 255)
+    if override == String("blue"):
+        return Color(110, 170, 255, 255)
+    if override == String("purple"):
+        return Color(184, 142, 245, 255)
+    if override == String("green"):
+        return Color(120, 210, 145, 255)
+    if override == String("teal"):
+        return Color(92, 205, 220, 255)
+    if override == String("gray"):
+        return Color(172, 176, 188, 255)
     if node.type_id == String("core/load_image"):
         return Color(104, 210, 142, 255)
     if node.type_id == String("core/load_video") or node.type_id == String("core/preview_video"):
@@ -1513,10 +1614,14 @@ def _node_socket_glyph_color(node: Node) -> Color:
         return Color(116, 165, 245, 255)
     if node.type_id == String("core/ideogram4_magic_prompt") or node.type_id == String("core/ideogram4_generate"):
         return Color(184, 142, 245, 255)
-    if node.type_id == String("core/k_sampler") or node.title == String("Load LoRA"):
+    if _is_sampler_visual_node(node):
         return Color(116, 112, 164, 255)
-    if node.type_id == String("core/save_image"):
-        return Color(120, 120, 128, 255)
+    if _is_save_image_visual_node(node):
+        return Color(120, 210, 145, 255)
+    if _is_checkpoint_visual_node(node) or _is_clip_visual_node(node):
+        return Color(218, 178, 88, 255)
+    if _is_latent_visual_node(node) or _is_vae_visual_node(node):
+        return Color(92, 185, 220, 255)
     return Color(122, 110, 82, 255)
 
 
@@ -1570,23 +1675,24 @@ def _draw_port_label(
 ):
     if ctx.theme.font_id == 0:
         return
+    var port_font = ctx.theme.font_size_pt + 2
     var y = pos.y + Float32(4.0)
     var col = Color(190, 192, 205, 230)
     if is_input:
-        var label = _truncate_for_width(name.copy(), Float32(92.0), ctx.theme.font_size_pt)
+        var label = _truncate_for_width(name.copy(), Float32(132.0), port_font)
         ctx.draw_text(
             ctx.theme.font_id,
-            ctx.theme.font_size_pt,
+            port_font,
             Vec2(pos.x + Float32(11.0), y),
             col,
             label,
         )
     else:
-        var label = _truncate_for_width(name.copy(), Float32(92.0), ctx.theme.font_size_pt)
-        var w = _text_w_est(label, ctx.theme.font_size_pt)
+        var label = _truncate_for_width(name.copy(), Float32(132.0), port_font)
+        var w = _text_w_est(label, port_font)
         ctx.draw_text(
             ctx.theme.font_id,
-            ctx.theme.font_size_pt,
+            port_font,
             Vec2(pos.x - w - Float32(11.0), y),
             col,
             label,
@@ -1599,6 +1705,26 @@ def _draw_port(mut ctx: Context, pos: Vec2, color: Color, active: Bool):
         ring_color = Color(255, 255, 255, 220)
     tess_circle(ctx, pos.copy(), _PORT_RING_RADIUS, ring_color, 20)
     tess_circle(ctx, pos.copy(), _PORT_DOT_SIZE * Float32(0.5), color.copy(), 20)
+
+
+def _node_resize_handle_rect(node_rect: Rect) -> Rect:
+    return Rect(
+        node_rect.x + node_rect.w - _NODE_RESIZE_HANDLE,
+        node_rect.y + node_rect.h - _NODE_RESIZE_HANDLE,
+        _NODE_RESIZE_HANDLE,
+        _NODE_RESIZE_HANDLE,
+    )
+
+
+def _draw_node_resize_handle(mut ctx: Context, rect: Rect, active: Bool):
+    var fill = Color(70, 78, 98, 230)
+    var stroke = Color(150, 165, 205, 230)
+    if active:
+        fill = Color(90, 132, 190, 240)
+        stroke = Color(220, 235, 255, 245)
+    tess_rounded_rect(ctx, rect.copy(), Float32(4.0), fill.copy(), 4)
+    ctx.draw_rect(Rect(rect.x + rect.w - Float32(5.0), rect.y + Float32(5.0), Float32(2.0), rect.h - Float32(8.0)), stroke.copy())
+    ctx.draw_rect(Rect(rect.x + Float32(5.0), rect.y + rect.h - Float32(5.0), rect.w - Float32(8.0), Float32(2.0)), stroke.copy())
 
 
 def _draw_field_edit_overlay(
@@ -2017,6 +2143,7 @@ def begin_node_canvas(
     # on the same frame as a new click.
     if ctx.control.mouse_pressed_this_frame:
         state.dragging_node = RET_ID_NONE
+        state.resizing_node = RET_ID_NONE
         state.dragging_group = Int64(-1)
 
     var group_left_pressed = False
@@ -2079,11 +2206,36 @@ def begin_node_canvas(
             state.dragging_node = RET_ID_NONE
             changed = True
 
+        var resize_left_pressed = False
+        var resize_handle = _node_resize_handle_rect(node_rect.copy())
+        if (
+            ctx.control.mouse_pressed_this_frame
+            and not port_left_pressed
+            and not group_left_pressed
+            and not action_bar_blocks_press
+            and not node.collapsed
+            and not state.locked
+            and resize_handle.contains(ctx.control.mouse_pos.copy())
+        ):
+            if not canvas_is_node_selected(state, node.id):
+                canvas_set_single_selection(state, node.id)
+            else:
+                state.selected_node = node.id
+                state.selected_edge = Int32(-1)
+            state.resizing_node = node.id
+            state.resize_start_mouse_world = canvas_screen_to_world(state, ctx.control.mouse_pos.copy())
+            state.resize_start_size = node.size.copy()
+            state.dragging_node = RET_ID_NONE
+            node_left_pressed = True
+            resize_left_pressed = True
+            changed = True
+
         var bbox_left_pressed = False
         if (
             not port_left_pressed
             and not group_left_pressed
             and not action_bar_blocks_press
+            and not resize_left_pressed
             and not node.collapsed
             and not state.locked
         ):
@@ -2105,6 +2257,7 @@ def begin_node_canvas(
             and not group_left_pressed
             and not action_bar_blocks_press
             and not bbox_left_pressed
+            and not resize_left_pressed
             and not node.collapsed
             and not state.locked
         ):
@@ -2139,7 +2292,7 @@ def begin_node_canvas(
 
         # Drag start on press — claim selection + drag, remember the
         # click offset within the node so cursor stays glued to it.
-        if (node_flags & CTRL_PRESSED) != 0 and not port_left_pressed and not group_left_pressed and not action_bar_blocks_press and not field_left_pressed and not bbox_left_pressed:
+        if (node_flags & CTRL_PRESSED) != 0 and not port_left_pressed and not group_left_pressed and not action_bar_blocks_press and not field_left_pressed and not bbox_left_pressed and not resize_left_pressed:
             if ctx.control.shift_held:
                 canvas_toggle_node_selection(state, node.id)
             elif not canvas_is_node_selected(state, node.id):
@@ -2206,36 +2359,39 @@ def begin_node_canvas(
 
         # Title text (FRAGILE #5 — only when font loaded).
         if ctx.theme.font_id != 0:
+            var title_font = ctx.theme.font_size_pt + 4
+            var title_y = title_rect.y + (title_rect.h + Float32(title_font) * Float32(0.60)) * Float32(0.5)
             var socket_glyph = _node_socket_glyph_color(node)
             tess_circle(
                 ctx,
-                Vec2(title_rect.x + Float32(13.0), title_rect.y + Float32(12.0)),
-                Float32(4.2),
+                Vec2(title_rect.x + Float32(16.0), title_rect.y + title_rect.h * Float32(0.5)),
+                Float32(5.2),
                 socket_glyph,
                 16,
             )
             var title_pos = Vec2(
-                title_rect.x + Float32(26.0),
-                title_rect.y + Float32(16.0),
+                title_rect.x + Float32(32.0),
+                title_y,
             )
             var title_label = _truncate_for_width(
                 node.title.copy(),
-                title_rect.w - Float32(86.0),
-                ctx.theme.font_size_pt,
+                title_rect.w - Float32(104.0),
+                title_font,
             )
             ctx.draw_text(
                 ctx.theme.font_id,
-                ctx.theme.font_size_pt,
+                title_font,
                 title_pos^,
                 ctx.theme.text.copy(),
                 title_label,
             )
             var badge = String("#") + String(node.id)
-            var badge_w = _text_w_est(badge, ctx.theme.font_size_pt)
+            var badge_font = ctx.theme.font_size_pt + 2
+            var badge_w = _text_w_est(badge, badge_font)
             ctx.draw_text(
                 ctx.theme.font_id,
-                ctx.theme.font_size_pt,
-                Vec2(title_rect.x + title_rect.w - badge_w - Float32(8.0), title_rect.y + Float32(16.0)),
+                badge_font,
+                Vec2(title_rect.x + title_rect.w - badge_w - Float32(10.0), title_y),
                 Color(196, 220, 206, 230),
                 badge,
             )
@@ -2249,6 +2405,12 @@ def begin_node_canvas(
             _draw_bbox_editor(ctx, state, node, node_rect.copy())
             if _draw_bbox_edit_overlay(ctx, state, graph, node, node_rect.copy()):
                 changed = True
+            if is_selected or (node_flags & CTRL_HOVERED) != 0:
+                _draw_node_resize_handle(
+                    ctx,
+                    resize_handle.copy(),
+                    state.resizing_node == node.id,
+                )
 
         # Port dots — circular sockets with dark rings + typed fill.
         var n_inputs = len(node.inputs)
@@ -2283,10 +2445,29 @@ def begin_node_canvas(
         if _draw_field_edit_overlay(ctx, state, graph, node, node_rect.copy()):
             changed = True
 
+    if state.resizing_node != RET_ID_NONE:
+        var ridx = graph.find_node(state.resizing_node)
+        if ridx >= 0 and ctx.input.mouse_held(_BTN_LEFT):
+            var now_world = canvas_screen_to_world(state, ctx.control.mouse_pos.copy())
+            var next_w = state.resize_start_size.x + (now_world.x - state.resize_start_mouse_world.x)
+            var next_h = state.resize_start_size.y + (now_world.y - state.resize_start_mouse_world.y)
+            if state.snap_to_grid or ctx.control.shift_held:
+                next_w = canvas_snap_world(Vec2(next_w, Float32(0.0)), state.snap_grid).x
+                next_h = canvas_snap_world(Vec2(Float32(0.0), next_h), state.snap_grid).y
+            if next_w < _NODE_MIN_W:
+                next_w = _NODE_MIN_W
+            if next_h < _NODE_MIN_H:
+                next_h = _NODE_MIN_H
+            if graph.nodes[ridx].size.x != next_w or graph.nodes[ridx].size.y != next_h:
+                graph.nodes[ridx].size = Vec2(next_w, next_h)
+                changed = True
+        if ctx.input.mouse_released(_BTN_LEFT) or ctx.control.mouse_released_this_frame:
+            state.resizing_node = RET_ID_NONE
+
     # 6. NodeDrag in progress — inverse-transform cursor through active
     #    pan/zoom to get the new world position; drag_offset is in
     #    screen space (same units as the cursor).
-    if state.dragging_node != RET_ID_NONE:
+    if state.dragging_node != RET_ID_NONE and state.resizing_node == RET_ID_NONE:
         var idx = graph.find_node(state.dragging_node)
         if (
             idx >= 0
