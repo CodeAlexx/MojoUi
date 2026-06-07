@@ -76,6 +76,11 @@ from mojoui.nodes.node import (
     FK_BOOL,
     FK_INT,
 )
+from mojoui.nodes.port import (
+    NVT_COUNT,
+    node_value_type_name,
+    node_value_type_from_name,
+)
 from mojoui.nodes.graph import Graph, Edge
 from mojoui.serde.json import (
     JsonValue,
@@ -132,6 +137,9 @@ def emit_workflow(graph: Graph) raises -> String:
         size_obj.set_object_field(String("x"), JsonValue.number(Float64(graph.nodes[ni].size.x)))
         size_obj.set_object_field(String("y"), JsonValue.number(Float64(graph.nodes[ni].size.y)))
         n_obj.set_object_field(String("size"), size_obj)
+
+        n_obj.set_object_field(String("inputs"), _ports_to_json(graph.nodes[ni].inputs))
+        n_obj.set_object_field(String("outputs"), _ports_to_json(graph.nodes[ni].outputs))
 
         # Fields dict → JSON object. The c37 Dict-aliasing wall requires us
         # to materialize the keys into a List[String] first, then index by
@@ -300,7 +308,59 @@ def _parse_node(n_val: JsonValue) raises -> Node:
             var fv = field_value_from_json(val)
             node.fields[key] = fv^
 
+    _parse_port_refs(node, n_val.get_object_field(String("inputs")), True)
+    _parse_port_refs(node, n_val.get_object_field(String("outputs")), False)
+
     return node^
+
+
+def _ports_to_json(ports: List[PortRef]) -> JsonValue:
+    var ports_array = List[JsonValue]()
+    for pi in range(len(ports)):
+        var p_obj = JsonValue.empty_object()
+        p_obj.set_object_field(String("name"), JsonValue.string(ports[pi].name))
+        p_obj.set_object_field(
+            String("type"),
+            JsonValue.string(node_value_type_name(ports[pi].value_type)),
+        )
+        p_obj.set_object_field(
+            String("value_type"),
+            JsonValue.number_i(Int(ports[pi].value_type)),
+        )
+        ports_array.append(p_obj^)
+    return JsonValue.array(ports_array)
+
+
+def _parse_port_refs(mut node: Node, ports_val: JsonValue, is_input: Bool):
+    if ports_val.kind != JK_ARRAY:
+        return
+    for pi in range(len(ports_val.arr_val)):
+        var p_val = ports_val.arr_val[pi].copy()
+        if p_val.kind != JK_OBJECT:
+            continue
+        var fallback = String("input_") + String(pi)
+        if not is_input:
+            fallback = String("output_") + String(pi)
+
+        var name = fallback.copy()
+        var name_val = p_val.get_object_field(String("name"))
+        if name_val.kind == JK_STRING:
+            name = name_val.str_val.copy()
+
+        var value_type = NVT_COUNT
+        var value_type_val = p_val.get_object_field(String("value_type"))
+        if value_type_val.kind == JK_NUMBER:
+            value_type = Int32(Int(value_type_val.num_val))
+        else:
+            var type_val = p_val.get_object_field(String("type"))
+            if type_val.kind == JK_STRING:
+                value_type = node_value_type_from_name(type_val.str_val)
+
+        var port = PortRef(name, value_type)
+        if is_input:
+            node.add_input(port)
+        else:
+            node.add_output(port)
 
 
 def _parse_edge(e_val: JsonValue) raises -> Edge:

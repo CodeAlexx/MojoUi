@@ -6,19 +6,21 @@ Coverage:
   (3)  Node size round-trip: persisted layout dimensions are preserved.
   (4)  Node with fields (string + number + bool): preserved across r-trip.
   (5)  Multi-node linear chain (3 nodes, 2 edges) — port names preserved.
-  (6)  Emit contains the `"version":1` substring.
-  (7)  Parse rejects `version: 2` with UnsupportedVersion.
-  (8)  Parse rejects malformed JSON.
-  (9)  Byte-equivalent round-trip: emit(parse(emit(g))) == emit(g).
-  (10) FieldValue round-trip across all 4 kinds (note INT collapses to
+  (6)  Node input/output ports round-trip so saved wires can render.
+  (7)  Emit contains the `"version":1` substring.
+  (8)  Parse rejects `version: 2` with UnsupportedVersion.
+  (9)  Parse rejects malformed JSON.
+  (10) Byte-equivalent round-trip: emit(parse(emit(g))) == emit(g).
+  (11) FieldValue round-trip across all 4 kinds (note INT collapses to
        NUMBER per the JSON number-type limitation).
-  (11) Empty fields dict round-trips as the empty object `{}`.
+  (12) Empty fields dict round-trips as the empty object `{}`.
 """
 
 from mojoui.core.types import Vec2
 from mojoui.core.id import RetainedId
 from mojoui.nodes.node import (
     Node,
+    PortRef,
     FieldValue,
     FK_NONE,
     FK_NUMBER,
@@ -26,6 +28,7 @@ from mojoui.nodes.node import (
     FK_BOOL,
     FK_INT,
 )
+from mojoui.nodes.port import NVT_CLIP, NVT_CONDITIONING, NVT_MODEL
 from mojoui.nodes.graph import Graph
 from mojoui.serde.workflow import (
     emit_workflow,
@@ -152,6 +155,43 @@ def test_multi_node_edges_round_trip() raises:
         raise Error("multi-node: edge 0 endpoints corrupted")
     if e1.from_node != b or e1.to_node != c:
         raise Error("multi-node: edge 1 endpoints corrupted")
+
+
+def test_node_ports_round_trip() raises:
+    var g = Graph()
+    var a = g.add_node(String("core/load_checkpoint"), Vec2(0.0, 0.0))
+    var b = g.add_node(String("core/encode_prompt"), Vec2(200.0, 0.0))
+    g.nodes[0].add_output(PortRef(String("MODEL"), NVT_MODEL))
+    g.nodes[0].add_output(PortRef(String("CLIP"), NVT_CLIP))
+    g.nodes[1].add_input(PortRef(String("clip"), NVT_CLIP))
+    g.nodes[1].add_output(PortRef(String("CONDITIONING"), NVT_CONDITIONING))
+    var ok = g.add_edge(a, String("CLIP"), b, String("clip"))
+    if not ok:
+        raise Error("ports setup: add_edge failed")
+
+    var json = emit_workflow(g)
+    if not _contains(json, String("\"outputs\"")):
+        raise Error("ports: emitted JSON missing outputs")
+    if not _contains(json, String("\"inputs\"")):
+        raise Error("ports: emitted JSON missing inputs")
+
+    var g2 = parse_workflow(json)
+    if g2.node_count() != 2:
+        raise Error("ports: expected 2 nodes")
+    if len(g2.nodes[0].outputs) != 2:
+        raise Error("ports: checkpoint outputs missing after parse")
+    if len(g2.nodes[1].inputs) != 1:
+        raise Error("ports: prompt inputs missing after parse")
+    if g2.nodes[0].outputs[1].name != String("CLIP"):
+        raise Error("ports: output name mismatch")
+    if g2.nodes[0].outputs[1].value_type != NVT_CLIP:
+        raise Error("ports: output value_type mismatch")
+    if g2.nodes[1].inputs[0].name != String("clip"):
+        raise Error("ports: input name mismatch")
+    if g2.nodes[1].inputs[0].value_type != NVT_CLIP:
+        raise Error("ports: input value_type mismatch")
+    if g2.edge_count() != 1:
+        raise Error("ports: expected edge to survive")
 
 
 def test_emit_contains_version_one() raises:
@@ -420,6 +460,7 @@ def main() raises:
     test_node_size_round_trip()
     test_node_with_fields_round_trip()
     test_multi_node_edges_round_trip()
+    test_node_ports_round_trip()
     test_emit_contains_version_one()
     test_parse_rejects_v2()
     test_parse_rejects_malformed()
@@ -428,4 +469,4 @@ def main() raises:
     test_empty_fields_dict_round_trip()
     test_parse_rejects_v99_in_large_workflow()
     test_parse_seeds_id_alloc_past_loaded_ids()
-    print("PASS: all 13 workflow smoke tests")
+    print("PASS: all 14 workflow smoke tests")

@@ -71,6 +71,8 @@ from mojoui.app.state import store_user_state, retrieve_user_state
 from mojoui.app.inference_model import InferenceState, QueueJob
 from mojoui.app.inference_graph_bridge import (
     build_klein9b_inference_graph,
+    graph_has_port_metadata,
+    merge_saved_node_layout,
     _sys_system,
     _write_text_file,
 )
@@ -131,7 +133,12 @@ struct NodeGraphDemoState(Movable):
             var file = open(String(_PERSIST_WORKFLOW), String("r"))
             var saved = parse_workflow(file.read())
             if saved.node_count() > 0:
-                g = saved^
+                if graph_has_port_metadata(saved):
+                    g = saved^
+                else:
+                    var matched = merge_saved_node_layout(g, saved)
+                    if matched == saved.node_count():
+                        _write_text_file(String(_PERSIST_WORKFLOW), emit_workflow(g))
         except e:
             pass
 

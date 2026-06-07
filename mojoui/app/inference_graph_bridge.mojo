@@ -399,6 +399,43 @@ def build_klein9b_inference_graph(
     return graph^
 
 
+def graph_has_port_metadata(graph: Graph) -> Bool:
+    """True when a loaded workflow carries node socket metadata.
+
+    Older native workflow JSON persisted edges but not node inputs/outputs,
+    which made reloads look disconnected because the canvas had no socket
+    positions to draw wires from.
+    """
+    for i in range(graph.node_count()):
+        if len(graph.nodes[i].inputs) > 0 or len(graph.nodes[i].outputs) > 0:
+            return True
+    return False
+
+
+def merge_saved_node_layout(mut graph: Graph, saved: Graph) -> Int:
+    """Merge visual node state from `saved` onto an already-built graph.
+
+    This keeps the fresh graph's ports/edges/executor shape while preserving
+    user edits from old portless cache files: position, size, title, and
+    fields such as node color overrides.
+    """
+    var matched = 0
+    for si in range(saved.node_count()):
+        var idx = graph.find_node(saved.nodes[si].id)
+        if idx < 0:
+            continue
+        graph.nodes[idx].position = saved.nodes[si].position.copy()
+        graph.nodes[idx].size = saved.nodes[si].size.copy()
+        graph.nodes[idx].title = saved.nodes[si].title.copy()
+        graph.nodes[idx].fields = saved.nodes[si].fields.copy()
+        graph.nodes[idx].muted = saved.nodes[si].muted
+        graph.nodes[idx].bypassed = saved.nodes[si].bypassed
+        graph.nodes[idx].collapsed = saved.nodes[si].collapsed
+        graph.nodes[idx].pinned = saved.nodes[si].pinned
+        matched = matched + 1
+    return matched
+
+
 def _sample_prompt_json(
     prompt: String,
     negative: String,
