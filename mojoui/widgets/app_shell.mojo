@@ -3,7 +3,6 @@
 from mojoui.core.context import Context
 from mojoui.core.control import CTRL_ACTIVE, CTRL_HOVERED, CTRL_RELEASED, OPT_FOCUSABLE
 from mojoui.core.types import Vec2, Rect, Color
-from mojoui.theme.trainer_theme import rust_trainer_colors
 
 
 struct TrainerShellMetrics(Copyable, Movable):
@@ -73,40 +72,38 @@ def apply_shell_density(mut ctx: Context, m: TrainerShellMetrics):
 
 
 def draw_shell_background(mut ctx: Context, m: TrainerShellMetrics, win_w: Float32, win_h: Float32):
-    var c = rust_trainer_colors()
-    ctx.draw_rect(Rect(0.0, 0.0, win_w, win_h), c.bg.copy())
-    ctx.draw_rect(Rect(0.0, 0.0, Float32(m.nav_w), win_h), c.panel.copy())
+    ctx.draw_rect(Rect(0.0, 0.0, win_w, win_h), ctx.theme.bg.copy())
+    ctx.draw_rect(Rect(0.0, 0.0, Float32(m.nav_w), win_h), ctx.theme.bg_panel.copy())
     ctx.draw_rect(
         Rect(win_w - Float32(m.status_w), 0.0, Float32(m.status_w), win_h),
-        c.panel.copy(),
+        ctx.theme.bg_panel.copy(),
     )
     ctx.draw_rect(
         Rect(Float32(m.nav_w), 0.0, win_w - Float32(m.nav_w + m.status_w), Float32(m.top_h)),
-        c.panel.copy(),
+        ctx.theme.bg_panel.copy(),
     )
-    ctx.draw_rect(Rect(Float32(m.nav_w) - 1.0, 0.0, 1.0, win_h), c.line.copy())
-    ctx.draw_rect(Rect(win_w - Float32(m.status_w), 0.0, 1.0, win_h), c.line.copy())
+    ctx.draw_rect(Rect(Float32(m.nav_w) - 1.0, 0.0, 1.0, win_h), ctx.theme.border.copy())
+    ctx.draw_rect(Rect(win_w - Float32(m.status_w), 0.0, 1.0, win_h), ctx.theme.border.copy())
     ctx.draw_rect(
         Rect(Float32(m.nav_w), Float32(m.top_h) - 1.0, win_w - Float32(m.nav_w + m.status_w), 1.0),
-        c.line.copy(),
+        ctx.theme.border.copy(),
     )
 
 
 def nav_row(mut ctx: Context, id_str: String, label_text: String, active: Bool) -> Bool:
     """A fixed-height active-aware nav row. Returns True on click."""
-    var c = rust_trainer_colors()
     var rect = ctx.layout_next()
     var id = ctx.get_id(id_str)
     var flags = ctx.update_control(id, rect.copy(), OPT_FOCUSABLE)
     if active:
-        ctx.draw_rect(rect.copy(), c.accent_soft.copy())
-        ctx.draw_rect(Rect(rect.x + rect.w - 5.0, rect.y + 7.0, 4.0, rect.h - 14.0), c.accent.copy())
+        ctx.draw_rect(rect.copy(), ctx.theme.selection_bg.copy())
+        ctx.draw_rect(Rect(rect.x + rect.w - 5.0, rect.y + 7.0, 4.0, rect.h - 14.0), ctx.theme.primary.copy())
     elif (flags & CTRL_HOVERED) != 0:
-        ctx.draw_rect(rect.copy(), Color(30, 27, 24, 255))
+        ctx.draw_rect(rect.copy(), ctx.theme.hover_bg.copy())
     if ctx.theme.font_id != 0:
-        var fg = c.dim.copy()
+        var fg = ctx.theme.text_subdued.copy()
         if active:
-            fg = c.accent.copy()
+            fg = ctx.theme.primary_hover.copy()
         var font_size = ctx.theme.font_size_pt
         if font_size < 14:
             font_size = 14
@@ -122,20 +119,21 @@ def nav_row(mut ctx: Context, id_str: String, label_text: String, active: Bool) 
 
 def action_button(mut ctx: Context, id_str: String, label_text: String, primary: Bool) -> Bool:
     """A compact shell action button using the next layout slot."""
-    var c = rust_trainer_colors()
     var rect = ctx.layout_next()
     var id = ctx.get_id(id_str)
     var flags = ctx.update_control(id, rect.copy(), OPT_FOCUSABLE)
     var bg = ctx.theme.control_bg.copy()
     var fg = ctx.theme.text.copy()
     if primary:
-        bg = c.accent.copy()
-        fg = Color(22, 12, 3, 255)
+        bg = ctx.theme.primary.copy()
+        fg = ctx.theme.text_on_accent.copy()
     if (flags & CTRL_ACTIVE) != 0:
-        bg = c.accent_soft.copy()
-        fg = c.text.copy()
+        bg = ctx.theme.primary_active.copy()
+        fg = ctx.theme.text_on_accent.copy()
+    elif (flags & CTRL_HOVERED) != 0 and primary:
+        bg = ctx.theme.primary_hover.copy()
     elif (flags & CTRL_HOVERED) != 0 and not primary:
-        bg = Color(45, 39, 34, 255)
+        bg = ctx.theme.hover_bg.copy()
     ctx.draw_rect(rect.copy(), bg)
     if ctx.theme.font_id != 0:
         var font_size = ctx.theme.font_size_pt - 1

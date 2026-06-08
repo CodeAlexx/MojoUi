@@ -1,4 +1,4 @@
-"""Tests for the per-node right-click context menu — Delete/Duplicate/Rename.
+"""Tests for the per-node right-click context menu — Delete/Duplicate/Rename/Color.
 
 Run: `pixi run test-node-menu`
 
@@ -12,14 +12,15 @@ Covers:
   2. Delete dispatch removes the node AND its edges.
   3. Duplicate dispatch adds a fresh offset copy, selects it.
   4. Rename dispatch sets `renaming_node` and leaves the graph intact.
-  5. Closed menu renders nothing / returns NODE_ACTION_NONE.
+  5. Color swatch dispatch writes the selected `ui_color`.
+  6. Closed menu renders nothing / returns NODE_ACTION_NONE.
 """
 
 from mojoui.core.types import Vec2
 from mojoui.core.context import Context
 from mojoui.core.id import RET_ID_NONE
 from mojoui.render.ffi import MOJOUI_BTN_RIGHT
-from mojoui.nodes.node import PortRef
+from mojoui.nodes.node import FK_STRING, PortRef
 from mojoui.nodes.graph import Graph
 from mojoui.nodes.canvas import CanvasState, begin_node_canvas, end_node_canvas
 from mojoui.nodes.node_menu import (
@@ -28,6 +29,7 @@ from mojoui.nodes.node_menu import (
     NODE_ACTION_DELETE,
     NODE_ACTION_DUPLICATE,
     NODE_ACTION_RENAME,
+    NODE_ACTION_COLOR,
 )
 
 
@@ -231,7 +233,51 @@ def test_rename_sets_flag_only() raises:
 
 
 # ----------------------------------------------------------------------------
-# 5. Closed menu is a no-op
+# 5. Color swatch dispatch writes ui_color
+# ----------------------------------------------------------------------------
+
+
+def test_color_swatch_sets_ui_color() raises:
+    """Clicking the Gold swatch writes `ui_color = "gold"` and returns the
+    stable NODE_ACTION_COLOR action."""
+    var ctx = Context()
+    var state = CanvasState()
+    var graph = Graph()
+    var ids = _two_node_graph(graph)
+    var a = ids[0]
+
+    state.ctx_menu_open = True
+    state.ctx_menu_node = a
+    state.ctx_menu_anchor = Vec2(Float32(0.0), Float32(24.0))
+
+    # Rows: Delete, Duplicate, Rename, Default, Gold.
+    # Gold spans y 120..144 when row_height=24; y=132 lands in it.
+    ctx.begin_frame_no_input(_win(), Vec2(50.0, 132.0), True, False)
+    _ = node_context_menu(ctx, String("node_ctx"), state, graph)
+    ctx.end_frame()
+    ctx.begin_frame_no_input(_win(), Vec2(50.0, 132.0), False, True)
+    var act = node_context_menu(ctx, String("node_ctx"), state, graph)
+    ctx.end_frame()
+
+    if act != NODE_ACTION_COLOR:
+        _fail("gold row release should dispatch COLOR, got " + String(act))
+    var idx = graph.find_node(a)
+    if idx < 0:
+        _fail("target node should still exist")
+    if not (String("ui_color") in graph.nodes[idx].fields):
+        _fail("color selection should set ui_color field")
+    var fv = graph.nodes[idx].fields[String("ui_color")].copy()
+    if fv.kind != FK_STRING:
+        _fail("ui_color should be stored as string field")
+    if fv.str_val != String("gold"):
+        _fail("ui_color should be gold, got " + fv.str_val.copy())
+    if state.ctx_menu_open:
+        _fail("menu should close after color dispatch")
+    print("PASS: test_color_swatch_sets_ui_color")
+
+
+# ----------------------------------------------------------------------------
+# 6. Closed menu is a no-op
 # ----------------------------------------------------------------------------
 
 
@@ -257,5 +303,6 @@ def main() raises:
     test_delete_removes_node_and_edges()
     test_duplicate_clones_and_selects()
     test_rename_sets_flag_only()
+    test_color_swatch_sets_ui_color()
     test_closed_menu_is_noop()
-    print("PASS: all 5 node-menu tests")
+    print("PASS: all 6 node-menu tests")

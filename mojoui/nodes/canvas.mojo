@@ -1496,7 +1496,7 @@ def _node_ui_color(node: Node) raises -> String:
     return String("default")
 
 
-def _node_body_color(node: Node, selected: Bool) raises -> Color:
+def _node_body_color(ctx: Context, node: Node, selected: Bool) raises -> Color:
     var override = _node_ui_color(node)
     if override == String("gold"):
         return Color(112, 95, 48, 246) if selected else Color(96, 82, 42, 238)
@@ -1510,6 +1510,30 @@ def _node_body_color(node: Node, selected: Bool) raises -> Color:
         return Color(42, 88, 96, 246) if selected else Color(32, 66, 74, 238)
     if override == String("gray"):
         return Color(68, 70, 78, 246) if selected else Color(50, 52, 60, 238)
+    if override == String("accent"):
+        return (
+            Color(ctx.theme.primary_hover.r, ctx.theme.primary_hover.g, ctx.theme.primary_hover.b, 246)
+            if selected
+            else Color(ctx.theme.primary.r, ctx.theme.primary.g, ctx.theme.primary.b, 226)
+        )
+    if override == String("success"):
+        return (
+            Color(ctx.theme.success_text.r, ctx.theme.success_text.g, ctx.theme.success_text.b, 220)
+            if selected
+            else Color(ctx.theme.success_bg.r, ctx.theme.success_bg.g, ctx.theme.success_bg.b, 226)
+        )
+    if override == String("warning"):
+        return (
+            Color(ctx.theme.warning_text.r, ctx.theme.warning_text.g, ctx.theme.warning_text.b, 220)
+            if selected
+            else Color(ctx.theme.warning_bg.r, ctx.theme.warning_bg.g, ctx.theme.warning_bg.b, 226)
+        )
+    if override == String("error"):
+        return (
+            Color(ctx.theme.error_text.r, ctx.theme.error_text.g, ctx.theme.error_text.b, 220)
+            if selected
+            else Color(ctx.theme.error_bg.r, ctx.theme.error_bg.g, ctx.theme.error_bg.b, 226)
+        )
     if node.type_id == String("core/load_image"):
         if selected:
             return Color(46, 82, 62, 246)
@@ -1555,7 +1579,7 @@ def _node_body_color(node: Node, selected: Bool) raises -> Color:
     return Color(42, 43, 52, 238)
 
 
-def _node_title_color(node: Node) raises -> Color:
+def _node_title_color(ctx: Context, node: Node) raises -> Color:
     var override = _node_ui_color(node)
     if override == String("gold"):
         return Color(72, 52, 30, 255)
@@ -1569,6 +1593,14 @@ def _node_title_color(node: Node) raises -> Color:
         return Color(22, 58, 66, 255)
     if override == String("gray"):
         return Color(44, 44, 50, 255)
+    if override == String("accent"):
+        return Color(ctx.theme.primary.r, ctx.theme.primary.g, ctx.theme.primary.b, 255)
+    if override == String("success"):
+        return Color(ctx.theme.success_bg.r, ctx.theme.success_bg.g, ctx.theme.success_bg.b, 255)
+    if override == String("warning"):
+        return Color(ctx.theme.warning_bg.r, ctx.theme.warning_bg.g, ctx.theme.warning_bg.b, 255)
+    if override == String("error"):
+        return Color(ctx.theme.error_bg.r, ctx.theme.error_bg.g, ctx.theme.error_bg.b, 255)
     if node.type_id == String("core/load_image"):
         return Color(30, 72, 46, 255)
     if node.type_id == String("core/load_video") or node.type_id == String("core/preview_video"):
@@ -1592,7 +1624,7 @@ def _node_title_color(node: Node) raises -> Color:
     return Color(36, 38, 48, 255)
 
 
-def _node_socket_glyph_color(node: Node) raises -> Color:
+def _node_socket_glyph_color(ctx: Context, node: Node) raises -> Color:
     var override = _node_ui_color(node)
     if override == String("gold"):
         return Color(232, 184, 72, 255)
@@ -1606,6 +1638,14 @@ def _node_socket_glyph_color(node: Node) raises -> Color:
         return Color(92, 205, 220, 255)
     if override == String("gray"):
         return Color(172, 176, 188, 255)
+    if override == String("accent"):
+        return ctx.theme.primary_hover.copy()
+    if override == String("success"):
+        return ctx.theme.success_text.copy()
+    if override == String("warning"):
+        return ctx.theme.warning_text.copy()
+    if override == String("error"):
+        return ctx.theme.error_text.copy()
     if node.type_id == String("core/load_image"):
         return Color(104, 210, 142, 255)
     if node.type_id == String("core/load_video") or node.type_id == String("core/preview_video"):
@@ -2331,7 +2371,7 @@ def begin_node_canvas(
 
         # Body fill — brighter shade when selected.
         var is_selected = canvas_is_node_selected(state, node.id)
-        var body_color = _node_body_color(node, is_selected)
+        var body_color = _node_body_color(ctx, node, is_selected)
 
         # Title bar — height scales with zoom.
         var title_rect = Rect(
@@ -2340,7 +2380,7 @@ def begin_node_canvas(
             node_rect.w,
             _TITLE_BAR_H * state.zoom,
         )
-        var title_color = _node_title_color(node)
+        var title_color = _node_title_color(ctx, node)
         var border_color: Color
         if is_selected:
             border_color = ctx.theme.primary.copy()
@@ -2361,7 +2401,7 @@ def begin_node_canvas(
         if ctx.theme.font_id != 0:
             var title_font = ctx.theme.font_size_pt + 4
             var title_y = title_rect.y + (title_rect.h + Float32(title_font) * Float32(0.60)) * Float32(0.5)
-            var socket_glyph = _node_socket_glyph_color(node)
+            var socket_glyph = _node_socket_glyph_color(ctx, node)
             tess_circle(
                 ctx,
                 Vec2(title_rect.x + Float32(16.0), title_rect.y + title_rect.h * Float32(0.5)),

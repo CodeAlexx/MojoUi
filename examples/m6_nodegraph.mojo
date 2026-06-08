@@ -321,7 +321,7 @@ def _ui(mut s: NodeGraphDemoState, win_w: Float32, win_h: Float32) raises:
             s.rename_state = TextEditState(single_line=True)
         s.last_action = String("renaming — click the top field, type, Enter")
     elif act == NODE_ACTION_COLOR:
-        s.last_action = String("cycled node color")
+        s.last_action = String("selected node color")
         canvas_changed = True
 
     # ---- Add-node menu overlay ----
