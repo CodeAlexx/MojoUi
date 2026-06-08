@@ -45,7 +45,9 @@ def is_diffusion_node(node: Node) -> Bool:
     return (
         is_checkpoint_loader(node)
         or node_matches(node, String("unetloader"))
+        or node_matches(node, String("cliploader"))
         or node_matches(node, String("dualcliploader"))
+        or node_matches(node, String("triplecliploader"))
         or node_matches(node, String("vaeloader"))
         or is_lora_loader(node)
         or is_clip_text_encode(node)
@@ -68,8 +70,12 @@ def execute_diffusion_node(graph: Graph, node: Node, mut result: WorkflowExecuti
         return execute_checkpoint_loader(node, result)
     if node_matches(node, String("unetloader")):
         return execute_unet_loader(node, result)
+    if node_matches(node, String("triplecliploader")):
+        return execute_triple_clip_loader(node, result)
     if node_matches(node, String("dualcliploader")):
         return execute_dual_clip_loader(node, result)
+    if node_matches(node, String("cliploader")):
+        return execute_clip_loader(node, result)
     if node_matches(node, String("vaeloader")):
         return execute_vae_loader(node, result)
     if is_lora_loader(node):
@@ -118,6 +124,23 @@ def execute_dual_clip_loader(node: Node, mut result: WorkflowExecutionResult) ra
     var kind = first_string_field(node, String("type"), String("clip_type"), String("widget_2"), String("flux"))
     add_handle_outputs(node, result, NVT_CLIP, WV_CLIP, String("clip"), String("dual_clip:") + kind + String(":") + clip_a + String("+") + clip_b)
     result.add_log(String("dual_clip_loader ") + kind)
+    return True
+
+
+def execute_clip_loader(node: Node, mut result: WorkflowExecutionResult) raises -> Bool:
+    var clip = first_string_field(node, String("clip_name"), String("path"), String("widget_0"), String("clip.safetensors"))
+    var kind = first_string_field(node, String("type"), String("clip_type"), String("widget_1"), String("stable_diffusion"))
+    add_handle_outputs(node, result, NVT_CLIP, WV_CLIP, String("clip"), String("clip:") + kind + String(":") + clip)
+    result.add_log(String("clip_loader ") + clip)
+    return True
+
+
+def execute_triple_clip_loader(node: Node, mut result: WorkflowExecutionResult) raises -> Bool:
+    var clip_a = first_string_field(node, String("clip_name1"), String("clip_l"), String("widget_0"), String("clip_l.safetensors"))
+    var clip_b = first_string_field(node, String("clip_name2"), String("clip_g"), String("widget_1"), String("clip_g.safetensors"))
+    var clip_c = first_string_field(node, String("clip_name3"), String("t5xxl"), String("widget_2"), String("t5xxl.safetensors"))
+    add_handle_outputs(node, result, NVT_CLIP, WV_CLIP, String("clip"), String("triple_clip:") + clip_a + String("+") + clip_b + String("+") + clip_c)
+    result.add_log(String("triple_clip_loader"))
     return True
 
 

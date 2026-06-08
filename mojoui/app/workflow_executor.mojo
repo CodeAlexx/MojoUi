@@ -42,6 +42,10 @@ from mojoui.app.workflow_types import (
     WV_VIDEO,
 )
 from mojoui.app.workflow_support import has_output_kind
+from mojoui.app.workflow_compat_nodes import (
+    execute_compat_node,
+    is_compat_node,
+)
 from mojoui.app.workflow_diffusion_nodes import (
     execute_diffusion_node,
     is_diffusion_node,
@@ -102,6 +106,8 @@ def execute_workflow_with_device(
 
 
 def execute_node(graph: Graph, node: Node, mut result: WorkflowExecutionResult) raises -> Bool:
+    if is_compat_node(node):
+        return execute_compat_node(graph, node, result)
     if is_diffusion_node(node):
         return execute_diffusion_node(graph, node, result)
     if is_ideogram_node(node):

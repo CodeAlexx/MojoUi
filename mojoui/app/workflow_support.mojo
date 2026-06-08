@@ -115,8 +115,9 @@ def first_output_name(node: Node, fallback: String) -> String:
 
 
 def output_name_or(node: Node, desired: String, fallback: String) -> String:
+    var wanted = lower(desired)
     for i in range(len(node.outputs)):
-        if node.outputs[i].name == desired:
+        if lower(node.outputs[i].name) == wanted:
             return node.outputs[i].name.copy()
     return fallback.copy()
 

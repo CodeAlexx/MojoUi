@@ -14,6 +14,7 @@ from mojoui.nodes.port import (
     NVT_VIDEO,
     NVT_BBOX,
     NVT_NUMBER,
+    NVT_SEED,
 )
 from mojoui.nodes.execution import EXEC_DONE, EXEC_SKIPPED
 from mojoui.nodes.canvas_model import CanvasState
@@ -354,6 +355,96 @@ def test_execute_comfy_utility_nodes() raises:
     print("PASS: execute Comfy utility nodes")
 
 
+def test_execute_popular_compat_nodes() raises:
+    var graph = Graph()
+    var clip = graph.add_node(String("comfy/CLIPLoader"), Vec2.zero())
+    graph.nodes[0].add_output(PortRef(String("CLIP"), NVT_CLIP))
+    graph.nodes[0].set_field(String("clip_name"), FieldValue.string(String("qwen_clip.safetensors")))
+
+    var text_a = graph.add_node(String("comfy/StringConstant"), Vec2(260.0, 0.0))
+    graph.nodes[1].add_output(PortRef(String("STRING"), NVT_TEXT))
+    graph.nodes[1].set_field(String("string"), FieldValue.string(String("cinematic")))
+
+    var text_b = graph.add_node(String("comfy/StringConstantMultiline"), Vec2(260.0, 120.0))
+    graph.nodes[2].add_output(PortRef(String("STRING"), NVT_TEXT))
+    graph.nodes[2].set_field(String("string"), FieldValue.string(String("robot portrait")))
+
+    var join = graph.add_node(String("comfy/JoinStrings"), Vec2(520.0, 60.0))
+    graph.nodes[3].add_input(PortRef(String("string1"), NVT_TEXT))
+    graph.nodes[3].add_input(PortRef(String("string2"), NVT_TEXT))
+    graph.nodes[3].add_output(PortRef(String("STRING"), NVT_TEXT))
+    graph.nodes[3].set_field(String("delimiter"), FieldValue.string(String(", ")))
+
+    var any = graph.add_node(String("comfy/Any Switch (rgthree)"), Vec2(780.0, 60.0))
+    graph.nodes[4].add_input(PortRef(String("any_01"), NVT_TEXT))
+    graph.nodes[4].add_output(PortRef(String("*"), NVT_TEXT))
+
+    var power = graph.add_node(String("comfy/Power Prompt (rgthree)"), Vec2(1040.0, 60.0))
+    graph.nodes[5].add_input(PortRef(String("opt_clip"), NVT_CLIP))
+    graph.nodes[5].add_output(PortRef(String("CONDITIONING"), NVT_CONDITIONING))
+    graph.nodes[5].add_output(PortRef(String("CLIP"), NVT_CLIP))
+    graph.nodes[5].add_output(PortRef(String("TEXT"), NVT_TEXT))
+    graph.nodes[5].set_field(String("prompt"), FieldValue.string(String("high detail city street")))
+
+    var seed = graph.add_node(String("comfy/Seed (rgthree)"), Vec2(0.0, 240.0))
+    graph.nodes[6].add_output(PortRef(String("SEED"), NVT_SEED))
+    graph.nodes[6].set_field(String("seed"), FieldValue.int_(Int64(12345)))
+
+    var image = graph.add_node(String("comfy/LoadImage"), Vec2(260.0, 260.0))
+    graph.nodes[7].add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+    graph.nodes[7].set_field(String("image"), FieldValue.string(String("/tmp/source.png")))
+
+    var resize = graph.add_node(String("comfy/Image Resize (rgthree)"), Vec2(520.0, 260.0))
+    graph.nodes[8].add_input(PortRef(String("image"), NVT_IMAGE))
+    graph.nodes[8].add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+    graph.nodes[8].add_output(PortRef(String("WIDTH"), NVT_NUMBER))
+    graph.nodes[8].add_output(PortRef(String("HEIGHT"), NVT_NUMBER))
+    graph.nodes[8].set_field(String("width"), FieldValue.int_(Int64(640)))
+    graph.nodes[8].set_field(String("height"), FieldValue.int_(Int64(480)))
+
+    var size = graph.add_node(String("comfy/Image or Latent Size (rgthree)"), Vec2(780.0, 260.0))
+    graph.nodes[9].add_input(PortRef(String("input"), NVT_IMAGE))
+    graph.nodes[9].add_output(PortRef(String("WIDTH"), NVT_NUMBER))
+    graph.nodes[9].add_output(PortRef(String("HEIGHT"), NVT_NUMBER))
+
+    var latent = graph.add_node(String("comfy/EmptyLatentImagePresets"), Vec2(0.0, 460.0))
+    graph.nodes[10].add_output(PortRef(String("LATENT"), NVT_LATENT))
+    graph.nodes[10].add_output(PortRef(String("width"), NVT_NUMBER))
+    graph.nodes[10].add_output(PortRef(String("height"), NVT_NUMBER))
+    graph.nodes[10].set_field(String("dimensions"), FieldValue.string(String("1024 x 576 (1.778:1)")))
+    graph.nodes[10].set_field(String("batch_size"), FieldValue.int_(Int64(2)))
+
+    var upscale = graph.add_node(String("comfy/LatentUpscaleBy"), Vec2(300.0, 460.0))
+    graph.nodes[11].add_input(PortRef(String("samples"), NVT_LATENT))
+    graph.nodes[11].add_output(PortRef(String("LATENT"), NVT_LATENT))
+    graph.nodes[11].set_field(String("scale_by"), FieldValue.number(2.0))
+
+    _ = graph.add_edge(text_a, String("STRING"), join, String("string1"))
+    _ = graph.add_edge(text_b, String("STRING"), join, String("string2"))
+    _ = graph.add_edge(join, String("STRING"), any, String("any_01"))
+    _ = graph.add_edge(clip, String("CLIP"), power, String("opt_clip"))
+    _ = graph.add_edge(image, String("IMAGE"), resize, String("image"))
+    _ = graph.add_edge(resize, String("IMAGE"), size, String("input"))
+    _ = graph.add_edge(latent, String("LATENT"), upscale, String("samples"))
+
+    var canvas = CanvasState()
+    var result = execute_workflow(graph, canvas)
+    _expect(result.success, "popular compat workflow should succeed")
+    _expect(result.find_value(clip, String("CLIP")).kind == WV_CLIP, "CLIPLoader should produce CLIP")
+    _expect(result.find_value(join, String("STRING")).text == String("cinematic, robot portrait"), "JoinStrings should join text")
+    _expect(result.find_value(any, String("*")).text == String("cinematic, robot portrait"), "Any Switch should forward first value")
+    _expect(result.find_value(power, String("CONDITIONING")).kind == WV_CONDITIONING, "Power Prompt should produce conditioning")
+    _expect(result.find_value(power, String("TEXT")).text == String("high detail city street"), "Power Prompt should echo text")
+    _expect(result.find_value(seed, String("SEED")).text == String("12345"), "Seed should produce numeric seed")
+    _expect(result.find_value(resize, String("IMAGE")).width == Int32(640), "Image Resize should set image width")
+    _expect(result.find_value(size, String("WIDTH")).text == String("640"), "Image or Latent Size should report width")
+    var latent_value = result.find_value(latent, String("LATENT"))
+    _expect(latent_value.width == Int32(1024) and latent_value.height == Int32(576), "KJ latent preset should parse dimensions")
+    var upscaled = result.find_value(upscale, String("LATENT"))
+    _expect(upscaled.width == Int32(2048) and upscaled.height == Int32(1152), "LatentUpscaleBy should scale dimensions")
+    print("PASS: execute popular compat nodes")
+
+
 def test_skipped_node_stays_in_plan() raises:
     var graph = Graph()
     _ = graph.add_node(String("core/load_image"), Vec2.zero())
@@ -405,7 +496,8 @@ def main() raises:
     test_execute_video_workflow()
     test_execute_comfy_sampler_workflow()
     test_execute_comfy_utility_nodes()
+    test_execute_popular_compat_nodes()
     test_skipped_node_stays_in_plan()
     test_rejects_cpu_device_when_gpu_required()
     test_cycle_raises()
-    print("PASS: all 8 workflow-executor tests")
+    print("PASS: all 9 workflow-executor tests")

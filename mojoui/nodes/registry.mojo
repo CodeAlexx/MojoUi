@@ -1125,3 +1125,316 @@ def register_comfy_standard_nodes(mut registry: NodeRegistry):
     uuid_prompt.with_output(String("STRING"), NVT_TEXT)
     uuid_prompt.with_size(Vec2(480.0, 400.0))
     registry.register(uuid_prompt^)
+
+    register_comfy_compat_extension_nodes(registry)
+
+
+def register_comfy_compat_extension_nodes(mut registry: NodeRegistry):
+    """Extra Comfy core + popular extension contracts.
+
+    These exact `comfy/<class_type>` registrations let imported API/visual
+    workflows from ComfyUI, rgthree, KJNodes, and Swarm resolve without a
+    Python node server. Runtime behavior still lives in the app executor.
+    """
+    var ckpt = NodeTypeDef(
+        String("comfy/CheckpointLoader"),
+        String("Checkpoint Loader"),
+        String("comfy/loaders"),
+    )
+    ckpt.with_output(String("MODEL"), NVT_MODEL)
+    ckpt.with_output(String("CLIP"), NVT_CLIP)
+    ckpt.with_output(String("VAE"), NVT_VAE)
+    ckpt.with_field(String("config_name"), FieldValue.string(String("config.yaml")))
+    ckpt.with_field(String("ckpt_name"), FieldValue.string(String("model.safetensors")))
+    ckpt.with_size(Vec2(330.0, 145.0))
+    registry.register(ckpt^)
+
+    var clip_loader = NodeTypeDef(
+        String("comfy/CLIPLoader"),
+        String("CLIP Loader"),
+        String("comfy/loaders"),
+    )
+    clip_loader.with_output(String("CLIP"), NVT_CLIP)
+    clip_loader.with_field(String("clip_name"), FieldValue.string(String("clip.safetensors")))
+    clip_loader.with_field(String("type"), FieldValue.string(String("stable_diffusion")))
+    clip_loader.with_size(Vec2(300.0, 125.0))
+    registry.register(clip_loader^)
+
+    var triple_clip = NodeTypeDef(
+        String("comfy/TripleCLIPLoader"),
+        String("Triple CLIP Loader"),
+        String("comfy/loaders"),
+    )
+    triple_clip.with_output(String("CLIP"), NVT_CLIP)
+    triple_clip.with_field(String("clip_name1"), FieldValue.string(String("clip_l.safetensors")))
+    triple_clip.with_field(String("clip_name2"), FieldValue.string(String("clip_g.safetensors")))
+    triple_clip.with_field(String("clip_name3"), FieldValue.string(String("t5xxl.safetensors")))
+    triple_clip.with_size(Vec2(340.0, 158.0))
+    registry.register(triple_clip^)
+
+    var lora_model = NodeTypeDef(
+        String("comfy/LoraLoaderModelOnly"),
+        String("LoRA Loader Model Only"),
+        String("comfy/loaders"),
+    )
+    lora_model.with_input(String("model"), NVT_MODEL)
+    lora_model.with_output(String("MODEL"), NVT_MODEL)
+    lora_model.with_field(String("lora_name"), FieldValue.string(String("lora.safetensors")))
+    lora_model.with_field(String("strength_model"), FieldValue.number(1.0))
+    lora_model.with_size(Vec2(320.0, 135.0))
+    registry.register(lora_model^)
+
+    var tiled_decode = NodeTypeDef(
+        String("comfy/VAEDecodeTiled"),
+        String("VAE Decode Tiled"),
+        String("comfy/vae"),
+    )
+    tiled_decode.with_input(String("samples"), NVT_LATENT)
+    tiled_decode.with_input(String("vae"), NVT_VAE)
+    tiled_decode.with_output(String("IMAGE"), NVT_IMAGE)
+    tiled_decode.with_field(String("tile_size"), FieldValue.int_(Int64(512)))
+    tiled_decode.with_size(Vec2(260.0, 122.0))
+    registry.register(tiled_decode^)
+
+    var tiled_encode = NodeTypeDef(
+        String("comfy/VAEEncodeTiled"),
+        String("VAE Encode Tiled"),
+        String("comfy/vae"),
+    )
+    tiled_encode.with_input(String("pixels"), NVT_IMAGE)
+    tiled_encode.with_input(String("vae"), NVT_VAE)
+    tiled_encode.with_output(String("LATENT"), NVT_LATENT)
+    tiled_encode.with_field(String("tile_size"), FieldValue.int_(Int64(512)))
+    tiled_encode.with_size(Vec2(260.0, 122.0))
+    registry.register(tiled_encode^)
+
+    var cond_combine = NodeTypeDef(
+        String("comfy/ConditioningCombine"),
+        String("Conditioning Combine"),
+        String("comfy/conditioning"),
+    )
+    cond_combine.with_input(String("conditioning_1"), NVT_CONDITIONING)
+    cond_combine.with_input(String("conditioning_2"), NVT_CONDITIONING)
+    cond_combine.with_output(String("CONDITIONING"), NVT_CONDITIONING)
+    cond_combine.with_size(Vec2(310.0, 120.0))
+    registry.register(cond_combine^)
+
+    var cond_zero = NodeTypeDef(
+        String("comfy/ConditioningZeroOut"),
+        String("Conditioning Zero Out"),
+        String("comfy/conditioning"),
+    )
+    cond_zero.with_input(String("conditioning"), NVT_CONDITIONING)
+    cond_zero.with_output(String("CONDITIONING"), NVT_CONDITIONING)
+    cond_zero.with_size(Vec2(290.0, 100.0))
+    registry.register(cond_zero^)
+
+    var latent_repeat = NodeTypeDef(
+        String("comfy/RepeatLatentBatch"),
+        String("Repeat Latent Batch"),
+        String("comfy/latent"),
+    )
+    latent_repeat.with_input(String("samples"), NVT_LATENT)
+    latent_repeat.with_output(String("LATENT"), NVT_LATENT)
+    latent_repeat.with_field(String("amount"), FieldValue.int_(Int64(1)))
+    latent_repeat.with_size(Vec2(280.0, 120.0))
+    registry.register(latent_repeat^)
+
+    var latent_upscale = NodeTypeDef(
+        String("comfy/LatentUpscale"),
+        String("Latent Upscale"),
+        String("comfy/latent"),
+    )
+    latent_upscale.with_input(String("samples"), NVT_LATENT)
+    latent_upscale.with_output(String("LATENT"), NVT_LATENT)
+    latent_upscale.with_field(String("upscale_method"), FieldValue.string(String("nearest-exact")))
+    latent_upscale.with_field(String("width"), FieldValue.int_(Int64(1024)))
+    latent_upscale.with_field(String("height"), FieldValue.int_(Int64(1024)))
+    latent_upscale.with_size(Vec2(310.0, 155.0))
+    registry.register(latent_upscale^)
+
+    var latent_upscale_by = NodeTypeDef(
+        String("comfy/LatentUpscaleBy"),
+        String("Latent Upscale By"),
+        String("comfy/latent"),
+    )
+    latent_upscale_by.with_input(String("samples"), NVT_LATENT)
+    latent_upscale_by.with_output(String("LATENT"), NVT_LATENT)
+    latent_upscale_by.with_field(String("scale_by"), FieldValue.number(2.0))
+    latent_upscale_by.with_size(Vec2(290.0, 125.0))
+    registry.register(latent_upscale_by^)
+
+    var rg_seed = NodeTypeDef(
+        String("comfy/Seed (rgthree)"),
+        String("rgthree Seed"),
+        String("rgthree"),
+    )
+    rg_seed.with_output(String("SEED"), NVT_SEED)
+    rg_seed.with_field(String("seed"), FieldValue.int_(Int64(0)))
+    rg_seed.with_size(Vec2(250.0, 105.0))
+    registry.register(rg_seed^)
+
+    var rg_any = NodeTypeDef(
+        String("comfy/Any Switch (rgthree)"),
+        String("rgthree Any Switch"),
+        String("rgthree"),
+    )
+    rg_any.with_input(String("any_01"), NVT_TEXT)
+    rg_any.with_input(String("any_02"), NVT_TEXT)
+    rg_any.with_input(String("any_03"), NVT_TEXT)
+    rg_any.with_output(String("*"), NVT_TEXT)
+    rg_any.with_size(Vec2(310.0, 145.0))
+    registry.register(rg_any^)
+
+    var rg_power_prompt = NodeTypeDef(
+        String("comfy/Power Prompt (rgthree)"),
+        String("rgthree Power Prompt"),
+        String("rgthree"),
+    )
+    rg_power_prompt.with_input(String("opt_model"), NVT_MODEL)
+    rg_power_prompt.with_input(String("opt_clip"), NVT_CLIP)
+    rg_power_prompt.with_output(String("CONDITIONING"), NVT_CONDITIONING)
+    rg_power_prompt.with_output(String("MODEL"), NVT_MODEL)
+    rg_power_prompt.with_output(String("CLIP"), NVT_CLIP)
+    rg_power_prompt.with_output(String("TEXT"), NVT_TEXT)
+    rg_power_prompt.with_field(String("prompt"), FieldValue.string(String("")))
+    rg_power_prompt.with_size(Vec2(430.0, 230.0))
+    registry.register(rg_power_prompt^)
+
+    var rg_power_prompt_simple = NodeTypeDef(
+        String("comfy/Power Prompt - Simple (rgthree)"),
+        String("rgthree Power Prompt Simple"),
+        String("rgthree"),
+    )
+    rg_power_prompt_simple.with_input(String("opt_clip"), NVT_CLIP)
+    rg_power_prompt_simple.with_output(String("CONDITIONING"), NVT_CONDITIONING)
+    rg_power_prompt_simple.with_output(String("TEXT"), NVT_TEXT)
+    rg_power_prompt_simple.with_field(String("prompt"), FieldValue.string(String("")))
+    rg_power_prompt_simple.with_size(Vec2(410.0, 200.0))
+    registry.register(rg_power_prompt_simple^)
+
+    var rg_size = NodeTypeDef(
+        String("comfy/Image or Latent Size (rgthree)"),
+        String("rgthree Image or Latent Size"),
+        String("rgthree"),
+    )
+    rg_size.with_input(String("input"), NVT_IMAGE)
+    rg_size.with_output(String("WIDTH"), NVT_NUMBER)
+    rg_size.with_output(String("HEIGHT"), NVT_NUMBER)
+    rg_size.with_size(Vec2(315.0, 115.0))
+    registry.register(rg_size^)
+
+    var rg_resize = NodeTypeDef(
+        String("comfy/Image Resize (rgthree)"),
+        String("rgthree Image Resize"),
+        String("rgthree"),
+    )
+    rg_resize.with_input(String("image"), NVT_IMAGE)
+    rg_resize.with_output(String("IMAGE"), NVT_IMAGE)
+    rg_resize.with_output(String("WIDTH"), NVT_NUMBER)
+    rg_resize.with_output(String("HEIGHT"), NVT_NUMBER)
+    rg_resize.with_field(String("measurement"), FieldValue.string(String("pixels")))
+    rg_resize.with_field(String("width"), FieldValue.int_(Int64(1024)))
+    rg_resize.with_field(String("height"), FieldValue.int_(Int64(1024)))
+    rg_resize.with_field(String("fit"), FieldValue.string(String("contain")))
+    rg_resize.with_field(String("method"), FieldValue.string(String("lanczos")))
+    rg_resize.with_size(Vec2(360.0, 210.0))
+    registry.register(rg_resize^)
+
+    var kj_int = NodeTypeDef(
+        String("comfy/INTConstant"),
+        String("KJ INT Constant"),
+        String("kj/constants"),
+    )
+    kj_int.with_output(String("INT"), NVT_NUMBER)
+    kj_int.with_field(String("value"), FieldValue.int_(Int64(0)))
+    kj_int.with_size(Vec2(240.0, 95.0))
+    registry.register(kj_int^)
+
+    var kj_float = NodeTypeDef(
+        String("comfy/FloatConstant"),
+        String("KJ Float Constant"),
+        String("kj/constants"),
+    )
+    kj_float.with_output(String("FLOAT"), NVT_NUMBER)
+    kj_float.with_field(String("value"), FieldValue.number(0.0))
+    kj_float.with_size(Vec2(240.0, 95.0))
+    registry.register(kj_float^)
+
+    var kj_bool = NodeTypeDef(
+        String("comfy/BOOLConstant"),
+        String("KJ BOOL Constant"),
+        String("kj/constants"),
+    )
+    kj_bool.with_output(String("BOOLEAN"), NVT_BOOL)
+    kj_bool.with_field(String("value"), FieldValue.bool_(False))
+    kj_bool.with_size(Vec2(240.0, 95.0))
+    registry.register(kj_bool^)
+
+    var kj_string = NodeTypeDef(
+        String("comfy/StringConstant"),
+        String("KJ String Constant"),
+        String("kj/constants"),
+    )
+    kj_string.with_output(String("STRING"), NVT_TEXT)
+    kj_string.with_field(String("string"), FieldValue.string(String("")))
+    kj_string.with_size(Vec2(300.0, 125.0))
+    registry.register(kj_string^)
+
+    var kj_string_ml = NodeTypeDef(
+        String("comfy/StringConstantMultiline"),
+        String("KJ String Constant Multiline"),
+        String("kj/constants"),
+    )
+    kj_string_ml.with_output(String("STRING"), NVT_TEXT)
+    kj_string_ml.with_field(String("string"), FieldValue.string(String("")))
+    kj_string_ml.with_size(Vec2(380.0, 210.0))
+    registry.register(kj_string_ml^)
+
+    var kj_join = NodeTypeDef(
+        String("comfy/JoinStrings"),
+        String("KJ Join Strings"),
+        String("kj/text"),
+    )
+    kj_join.with_input(String("string_1"), NVT_TEXT)
+    kj_join.with_input(String("string_2"), NVT_TEXT)
+    kj_join.with_output(String("STRING"), NVT_TEXT)
+    kj_join.with_field(String("delimiter"), FieldValue.string(String(" ")))
+    kj_join.with_size(Vec2(330.0, 145.0))
+    registry.register(kj_join^)
+
+    var kj_cond_pass = NodeTypeDef(
+        String("comfy/CondPassThrough"),
+        String("KJ Conditioning Pass Through"),
+        String("kj/misc"),
+    )
+    kj_cond_pass.with_input(String("positive"), NVT_CONDITIONING)
+    kj_cond_pass.with_input(String("negative"), NVT_CONDITIONING)
+    kj_cond_pass.with_output(String("positive"), NVT_CONDITIONING)
+    kj_cond_pass.with_output(String("negative"), NVT_CONDITIONING)
+    kj_cond_pass.with_size(Vec2(330.0, 130.0))
+    registry.register(kj_cond_pass^)
+
+    var kj_model_pass = NodeTypeDef(
+        String("comfy/ModelPassThrough"),
+        String("KJ Model Pass Through"),
+        String("kj/misc"),
+    )
+    kj_model_pass.with_input(String("model"), NVT_MODEL)
+    kj_model_pass.with_output(String("MODEL"), NVT_MODEL)
+    kj_model_pass.with_size(Vec2(300.0, 105.0))
+    registry.register(kj_model_pass^)
+
+    var kj_latent_preset = NodeTypeDef(
+        String("comfy/EmptyLatentImagePresets"),
+        String("KJ Empty Latent Presets"),
+        String("kj/latents"),
+    )
+    kj_latent_preset.with_output(String("LATENT"), NVT_LATENT)
+    kj_latent_preset.with_output(String("width"), NVT_NUMBER)
+    kj_latent_preset.with_output(String("height"), NVT_NUMBER)
+    kj_latent_preset.with_field(String("width"), FieldValue.int_(Int64(1024)))
+    kj_latent_preset.with_field(String("height"), FieldValue.int_(Int64(1024)))
+    kj_latent_preset.with_field(String("batch_size"), FieldValue.int_(Int64(1)))
+    kj_latent_preset.with_size(Vec2(330.0, 155.0))
+    registry.register(kj_latent_preset^)

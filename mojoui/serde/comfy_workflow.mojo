@@ -375,7 +375,9 @@ def _add_api_outputs(mut node: Node, class_type: String):
         node.add_output(PortRef(String("MODEL"), NVT_MODEL))
         node.add_output(PortRef(String("CLIP"), NVT_CLIP))
         node.add_output(PortRef(String("VAE"), NVT_VAE))
-    elif _contains_ci(class_type, String("loraloader")) or _contains_ci(class_type, String("powerlora")):
+    elif _contains_ci(class_type, String("loraloadermodelonly")):
+        node.add_output(PortRef(String("MODEL"), NVT_MODEL))
+    elif _contains_ci(class_type, String("loraloader")) or _contains_ci(class_type, String("powerlora")) or _contains_ci(class_type, String("loraloaderstack")):
         node.add_output(PortRef(String("MODEL"), NVT_MODEL))
         node.add_output(PortRef(String("CLIP"), NVT_CLIP))
     elif _contains_ci(class_type, String("unetloader")) or _contains_ci(class_type, String("diffusionmodelloader")):
@@ -386,9 +388,43 @@ def _add_api_outputs(mut node: Node, class_type: String):
         node.add_output(PortRef(String("VAE"), NVT_VAE))
     elif _contains_ci(class_type, String("controlnetloader")):
         node.add_output(PortRef(String("CONTROL_NET"), NVT_MODEL))
+    elif _contains_ci(class_type, String("power prompt")):
+        node.add_output(PortRef(String("CONDITIONING"), NVT_CONDITIONING))
+        if not _contains_ci(class_type, String("simple")):
+            node.add_output(PortRef(String("MODEL"), NVT_MODEL))
+            node.add_output(PortRef(String("CLIP"), NVT_CLIP))
+        node.add_output(PortRef(String("TEXT"), NVT_TEXT))
+    elif _contains_ci(class_type, String("condpassthrough")):
+        node.add_output(PortRef(String("positive"), NVT_CONDITIONING))
+        node.add_output(PortRef(String("negative"), NVT_CONDITIONING))
+    elif _contains_ci(class_type, String("modelpassthrough")):
+        node.add_output(PortRef(String("MODEL"), NVT_MODEL))
+    elif _contains_ci(class_type, String("conditioningcombine")) or _contains_ci(class_type, String("conditioningmulticombine")) or _contains_ci(class_type, String("conditioningsetmaskandcombine")):
+        node.add_output(PortRef(String("CONDITIONING"), NVT_CONDITIONING))
+    elif _contains_ci(class_type, String("seed")):
+        node.add_output(PortRef(String("SEED"), NVT_SEED))
+    elif _contains_ci(class_type, String("intconstant")):
+        node.add_output(PortRef(String("INT"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("floatconstant")):
+        node.add_output(PortRef(String("FLOAT"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("boolconstant")):
+        node.add_output(PortRef(String("BOOLEAN"), NVT_BOOL))
+    elif _contains_ci(class_type, String("stringconstant")):
+        node.add_output(PortRef(String("STRING"), NVT_TEXT))
+    elif _contains_ci(class_type, String("joinstrings")) or _contains_ci(class_type, String("somethingtostring")) or _contains_ci(class_type, String("widgettostring")):
+        node.add_output(PortRef(String("STRING"), NVT_TEXT))
+    elif _contains_ci(class_type, String("any switch")) or _contains_ci(class_type, String("lazyswitch")):
+        node.add_output(PortRef(String("*"), NVT_TEXT))
+    elif _contains_ci(class_type, String("image or latent size")) or _contains_ci(class_type, String("getimagesize")) or _contains_ci(class_type, String("getlatentsize")):
+        node.add_output(PortRef(String("WIDTH"), NVT_NUMBER))
+        node.add_output(PortRef(String("HEIGHT"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("imageresize")) or _contains_ci(class_type, String("image resize")):
+        node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+        node.add_output(PortRef(String("WIDTH"), NVT_NUMBER))
+        node.add_output(PortRef(String("HEIGHT"), NVT_NUMBER))
     elif _contains_ci(class_type, String("cliptextencode")) or _contains_ci(class_type, String("conditioning")):
         node.add_output(PortRef(String("CONDITIONING"), NVT_CONDITIONING))
-    elif _contains_ci(class_type, String("emptylatent")) or _contains_ci(class_type, String("latentimage")) or _contains_ci(class_type, String("ksampler")) or _contains_ci(class_type, String("samplercustom")) or _contains_ci(class_type, String("vaeencode")):
+    elif _contains_ci(class_type, String("emptylatent")) or _contains_ci(class_type, String("latentimage")) or _contains_ci(class_type, String("repeatlatent")) or _contains_ci(class_type, String("latentupscale")) or _contains_ci(class_type, String("ksampler")) or _contains_ci(class_type, String("samplercustom")) or _contains_ci(class_type, String("vaeencode")):
         node.add_output(PortRef(String("LATENT"), NVT_LATENT))
     elif _contains_ci(class_type, String("vaedecode")) or _contains_ci(class_type, String("loadimage")) or _contains_ci(class_type, String("image")):
         if not _contains_ci(class_type, String("saveimage")):
@@ -400,6 +436,12 @@ def _add_api_outputs(mut node: Node, class_type: String):
 
 
 def _infer_port_type_from_name(name: String) -> Int32:
+    if _contains_ci(name, String("opt_model")):
+        return NVT_MODEL
+    if _contains_ci(name, String("opt_clip")):
+        return NVT_CLIP
+    if _contains_ci(name, String("any_")):
+        return NVT_TEXT
     if _contains_ci(name, String("model")):
         return NVT_MODEL
     if _contains_ci(name, String("clip")):
@@ -416,9 +458,9 @@ def _infer_port_type_from_name(name: String) -> Int32:
         return NVT_VIDEO
     if _contains_ci(name, String("seed")):
         return NVT_SEED
-    if _contains_ci(name, String("width")) or _contains_ci(name, String("height")) or _contains_ci(name, String("steps")) or _contains_ci(name, String("cfg")) or _contains_ci(name, String("denoise")):
+    if _contains_ci(name, String("width")) or _contains_ci(name, String("height")) or _contains_ci(name, String("steps")) or _contains_ci(name, String("cfg")) or _contains_ci(name, String("denoise")) or _contains_ci(name, String("amount")) or _contains_ci(name, String("scale")):
         return NVT_NUMBER
-    if _contains_ci(name, String("enable")) or _contains_ci(name, String("enabled")):
+    if _contains_ci(name, String("enable")) or _contains_ci(name, String("enabled")) or _contains_ci(name, String("bool")):
         return NVT_BOOL
     return NVT_TEXT
 

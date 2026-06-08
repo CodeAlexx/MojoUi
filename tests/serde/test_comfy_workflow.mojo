@@ -5,7 +5,16 @@ Run: `pixi run test-comfy-workflow`
 
 from mojoui.core.id import RetainedId
 from mojoui.nodes.node import FK_STRING
-from mojoui.nodes.port import NVT_IMAGE, NVT_VIDEO, NVT_BBOX, NVT_MODEL, NVT_CLIP
+from mojoui.nodes.port import (
+    NVT_IMAGE,
+    NVT_VIDEO,
+    NVT_BBOX,
+    NVT_MODEL,
+    NVT_CLIP,
+    NVT_CONDITIONING,
+    NVT_NUMBER,
+    NVT_TEXT,
+)
 from mojoui.serde.comfy_workflow import parse_comfy_workflow
 
 
@@ -144,8 +153,42 @@ def test_parse_comfy_api_prompt() raises:
     print("PASS: test_parse_comfy_api_prompt")
 
 
+def test_parse_popular_extension_api_prompt() raises:
+    var raw = String(
+        "{"
+        + "\"1\":{\"class_type\":\"CLIPLoader\",\"inputs\":{\"clip_name\":\"qwen_clip.safetensors\",\"type\":\"stable_diffusion\"}},"
+        + "\"2\":{\"class_type\":\"Power Prompt (rgthree)\",\"inputs\":{\"opt_clip\":[\"1\",0],\"prompt\":\"serenity prompt\"}},"
+        + "\"3\":{\"class_type\":\"INTConstant\",\"inputs\":{\"value\":640}},"
+        + "\"4\":{\"class_type\":\"Any Switch (rgthree)\",\"inputs\":{\"any_01\":[\"2\",3]}},"
+        + "\"5\":{\"class_type\":\"Image Resize (rgthree)\",\"inputs\":{\"image\":[\"6\",0],\"width\":[\"3\",0],\"height\":480}},"
+        + "\"6\":{\"class_type\":\"LoadImage\",\"inputs\":{\"image\":\"source.png\"}}"
+        + "}"
+    )
+    var imported = parse_comfy_workflow(raw)
+    if imported.graph.node_count() != 6:
+        _fail("popular api: expected 6 nodes")
+    if imported.graph.edge_count() != 4:
+        _fail("popular api: expected 4 edges, got " + String(imported.graph.edge_count()))
+    if imported.graph.nodes[0].outputs[0].value_type != NVT_CLIP:
+        _fail("popular api: CLIPLoader should infer CLIP")
+    if imported.graph.nodes[1].outputs[0].value_type != NVT_CONDITIONING:
+        _fail("popular api: Power Prompt should infer conditioning first")
+    if imported.graph.nodes[1].outputs[3].value_type != NVT_TEXT:
+        _fail("popular api: Power Prompt should infer TEXT output")
+    if imported.graph.nodes[2].outputs[0].value_type != NVT_NUMBER:
+        _fail("popular api: INTConstant should infer number output")
+    if imported.graph.nodes[4].outputs[0].value_type != NVT_IMAGE:
+        _fail("popular api: Image Resize should infer image output")
+    if imported.graph.nodes[4].outputs[1].value_type != NVT_NUMBER:
+        _fail("popular api: Image Resize should infer width output")
+    if imported.graph.edges[1].from_port != String("TEXT"):
+        _fail("popular api: Any Switch should link from Power Prompt TEXT slot")
+    print("PASS: test_parse_popular_extension_api_prompt")
+
+
 def main() raises:
     test_parse_visual_workflow_nodes_links_groups()
     test_parse_swarm_workflow_wrapper()
     test_parse_comfy_api_prompt()
+    test_parse_popular_extension_api_prompt()
     print("PASS: all Comfy workflow import smoke tests")

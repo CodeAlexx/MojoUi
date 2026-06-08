@@ -64,8 +64,8 @@ def test_register_builtins_count() raises:
     """The `register_builtins` helper registers ComfyUI-shaped core/media/Ideogram typedefs."""
     var reg = NodeRegistry()
     register_builtins(reg)
-    if reg.size() != 56:
-        raise Error("expected 56 builtins, got " + String(reg.size()))
+    if reg.size() != 82:
+        raise Error("expected 82 builtins, got " + String(reg.size()))
     if not reg.is_registered(String("core/load_checkpoint")):
         raise Error("missing core/load_checkpoint")
     if not reg.is_registered(String("core/encode_prompt")):
@@ -112,6 +112,20 @@ def test_register_builtins_count() raises:
         raise Error("missing kj/Ideogram4PromptBuilderKJ")
     if not reg.is_registered(String("swarm/SwarmKSampler")):
         raise Error("missing swarm/SwarmKSampler")
+    if not reg.is_registered(String("comfy/CheckpointLoader")):
+        raise Error("missing comfy/CheckpointLoader")
+    if not reg.is_registered(String("comfy/CLIPLoader")):
+        raise Error("missing comfy/CLIPLoader")
+    if not reg.is_registered(String("comfy/TripleCLIPLoader")):
+        raise Error("missing comfy/TripleCLIPLoader")
+    if not reg.is_registered(String("comfy/Power Prompt (rgthree)")):
+        raise Error("missing rgthree Power Prompt import typedef")
+    if not reg.is_registered(String("comfy/Any Switch (rgthree)")):
+        raise Error("missing rgthree Any Switch import typedef")
+    if not reg.is_registered(String("comfy/INTConstant")):
+        raise Error("missing KJ INTConstant import typedef")
+    if not reg.is_registered(String("comfy/JoinStrings")):
+        raise Error("missing KJ JoinStrings import typedef")
     print("  PASS test_register_builtins_count")
 
 
@@ -120,8 +134,8 @@ def test_by_category() raises:
     var reg = NodeRegistry()
     register_builtins(reg)
     var groups = reg.by_category()
-    if len(groups) != 19:
-        raise Error("expected 19 categories, got " + String(len(groups)))
+    if len(groups) != 23:
+        raise Error("expected 23 categories, got " + String(len(groups)))
     if not (String("core") in groups):
         raise Error("missing 'core' category")
     if not (String("sampler") in groups):
@@ -150,6 +164,14 @@ def test_by_category() raises:
         raise Error("missing 'kj' category")
     if not (String("swarm") in groups):
         raise Error("missing 'swarm' category")
+    if not (String("kj/constants") in groups):
+        raise Error("missing 'kj/constants' category")
+    if not (String("kj/text") in groups):
+        raise Error("missing 'kj/text' category")
+    if not (String("kj/misc") in groups):
+        raise Error("missing 'kj/misc' category")
+    if not (String("kj/latents") in groups):
+        raise Error("missing 'kj/latents' category")
     # core has 2 typedefs (load_checkpoint, encode_prompt), video has 3,
     # ideogram has 3, and the other categories carry the compact starters.
     if len(groups[String("core")]) != 2:
@@ -166,16 +188,24 @@ def test_by_category() raises:
         raise Error("video category should have 3 typedefs")
     if len(groups[String("ideogram")]) != 3:
         raise Error("ideogram category should have 3 typedefs")
-    if len(groups[String("comfy/loaders")]) != 5:
-        raise Error("comfy/loaders category should have 5 typedefs")
+    if len(groups[String("comfy/loaders")]) != 9:
+        raise Error("comfy/loaders category should have 9 typedefs")
     if len(groups[String("comfy/sampling")]) != 3:
         raise Error("comfy/sampling category should have 3 typedefs")
     if len(groups[String("comfy/image")]) != 8:
         raise Error("comfy/image category should have 8 typedefs")
-    if len(groups[String("rgthree")]) != 3:
-        raise Error("rgthree category should have 3 typedefs")
+    if len(groups[String("rgthree")]) != 9:
+        raise Error("rgthree category should have 9 typedefs")
     if len(groups[String("kj")]) != 3:
         raise Error("kj category should have 3 typedefs")
+    if len(groups[String("kj/constants")]) != 5:
+        raise Error("kj/constants category should have 5 typedefs")
+    if len(groups[String("kj/text")]) != 1:
+        raise Error("kj/text category should have 1 typedef")
+    if len(groups[String("kj/misc")]) != 2:
+        raise Error("kj/misc category should have 2 typedefs")
+    if len(groups[String("kj/latents")]) != 1:
+        raise Error("kj/latents category should have 1 typedef")
     if len(groups[String("swarm")]) != 4:
         raise Error("swarm category should have 4 typedefs")
     print("  PASS test_by_category")
