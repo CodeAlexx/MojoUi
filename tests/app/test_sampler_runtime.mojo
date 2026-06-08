@@ -8,10 +8,12 @@ from mojoui.app.sampler_runtime import (
     SCHED_EXPONENTIAL,
     SCHED_KARRAS,
     SCHED_NORMAL,
+    LanPaintConfig,
     SamplerConfig,
     build_sigmas,
     parse_sampler_kind,
     parse_scheduler_kind,
+    run_lanpaint_sampler,
     run_sampler,
     sampler_kind_name,
     scheduler_kind_name,
@@ -77,8 +79,33 @@ def test_sampler_runs_are_deterministic() raises:
     print("PASS: deterministic sampler runs")
 
 
+def test_lanpaint_sampler_runs_inner_loop() raises:
+    var cfg = SamplerConfig()
+    cfg.steps = Int32(6)
+    cfg.cfg = 4.0
+    cfg.seed = Int64(99)
+    var lanpaint = LanPaintConfig()
+    lanpaint.num_steps = Int32(3)
+    lanpaint.lambda_scale = 8.0
+    lanpaint.step_size = 0.15
+    lanpaint.prompt_mode = String("Prompt First")
+    var pos = text_conditioning_scalar(String("clean inpaint detail"))
+    var neg = text_conditioning_scalar(String("blur artifacts"))
+    var result = run_lanpaint_sampler(cfg, lanpaint, 0.25, pos, neg)
+    _expect(result.steps_run == Int32(6), "LanPaint should run outer sampler steps")
+    _expect(result.inner_iterations > Int32(0), "LanPaint should run inner iterations")
+    _expect(result.sampler_name == String("euler"), "LanPaint should preserve sampler name")
+    _expect(result.scheduler_name == String("normal"), "LanPaint should preserve scheduler name")
+
+    lanpaint.num_steps = Int32(0)
+    var no_inner = run_lanpaint_sampler(cfg, lanpaint, 0.25, pos, neg)
+    _expect(no_inner.inner_iterations == Int32(0), "LanPaint NumSteps=0 should skip inner loop")
+    print("PASS: LanPaint sampler inner loop")
+
+
 def main() raises:
     test_sampler_aliases()
     test_sigmas_descend()
     test_sampler_runs_are_deterministic()
-    print("PASS: all 3 sampler-runtime tests")
+    test_lanpaint_sampler_runs_inner_loop()
+    print("PASS: all 4 sampler-runtime tests")

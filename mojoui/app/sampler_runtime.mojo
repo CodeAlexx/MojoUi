@@ -65,6 +65,58 @@ struct SamplerRunResult(Copyable, Movable):
         self.seed = Int64(0)
 
 
+struct LanPaintConfig(Copyable, Movable):
+    var num_steps: Int32
+    var lambda_scale: Float64
+    var step_size: Float64
+    var beta: Float64
+    var friction: Float64
+    var prompt_mode: String
+    var early_stop: Int32
+    var inner_threshold: Float64
+    var inner_patience: Int32
+    var inpainting_mode: String
+
+    def __init__(out self):
+        self.num_steps = Int32(5)
+        self.lambda_scale = 16.0
+        self.step_size = 0.2
+        self.beta = 1.0
+        self.friction = 15.0
+        self.prompt_mode = String("Image First")
+        self.early_stop = Int32(1)
+        self.inner_threshold = 0.0
+        self.inner_patience = Int32(1)
+        self.inpainting_mode = String("Image Inpainting")
+
+
+struct LanPaintRunResult(Copyable, Movable):
+    var final_scalar: Float64
+    var denoised_scalar: Float64
+    var steps_run: Int32
+    var inner_iterations: Int32
+    var early_stop_count: Int32
+    var sampler_name: String
+    var scheduler_name: String
+    var first_sigma: Float64
+    var last_sigma: Float64
+    var trace_hash: Float64
+    var seed: Int64
+
+    def __init__(out self):
+        self.final_scalar = 0.0
+        self.denoised_scalar = 0.0
+        self.steps_run = Int32(0)
+        self.inner_iterations = Int32(0)
+        self.early_stop_count = Int32(0)
+        self.sampler_name = String("")
+        self.scheduler_name = String("")
+        self.first_sigma = 0.0
+        self.last_sigma = 0.0
+        self.trace_hash = 0.0
+        self.seed = Int64(0)
+
+
 def parse_sampler_kind(name: String) -> SamplerKind:
     var key = _normalized_key(name)
     if key == String("eulera") or key == String("eulerancestral"):
@@ -237,6 +289,126 @@ def run_sampler(
     return result^
 
 
+def run_lanpaint_sampler(
+    config: SamplerConfig,
+    lanpaint: LanPaintConfig,
+    latent_scalar: Float64,
+    positive_scalar: Float64,
+    negative_scalar: Float64,
+) -> LanPaintRunResult:
+    var sigmas = build_sigmas(config.scheduler, config.steps, config.denoise)
+    var total_steps = Int32(len(sigmas) - 1)
+    var start = config.start_at_step
+    if start < Int32(0):
+        start = Int32(0)
+    if start > total_steps:
+        start = total_steps
+    var end = config.end_at_step
+    if end <= Int32(0) or end > total_steps:
+        end = total_steps
+    if end < start:
+        end = start
+
+    var x = latent_scalar
+    if config.add_noise:
+        x = x + _seed_noise(config.seed, Int32(0)) * sigmas[Int(start)] * 0.1
+
+    var prompt_guidance = config.cfg
+    if _normalized_key(lanpaint.prompt_mode) == String("promptfirst"):
+        prompt_guidance = -0.5
+    var prompt_target = negative_scalar + (positive_scalar - negative_scalar) * prompt_guidance
+
+    var trace = 0.0
+    var ran = Int32(0)
+    var inner_total = Int32(0)
+    var early_total = Int32(0)
+    var denoised = x
+    for i in range(Int(start), Int(end)):
+        var sigma = sigmas[i]
+        var sigma_next = sigmas[i + 1]
+        var remaining = total_steps - Int32(i)
+        var inner_limit = lanpaint.num_steps
+        if inner_limit < Int32(0):
+            inner_limit = Int32(0)
+        if lanpaint.early_stop > Int32(0) and remaining <= lanpaint.early_stop:
+            inner_limit = Int32(0)
+
+        if inner_limit > Int32(0):
+            var x_t = x
+            var velocity = 0.0
+            var stable_count = Int32(0)
+            var abt = _clamp01(1.0 - sigma)
+            var step_amount = lanpaint.step_size * (1.0 - abt)
+            if step_amount <= 0.000001:
+                step_amount = 0.000001
+            var known_weight = _clamp01(0.35 + sigma * 0.35)
+            var unknown_weight = 1.0 - known_weight
+            var friction_keep = 1.0 - _clamp01(lanpaint.friction * 0.02)
+            var beta = lanpaint.beta
+            if beta <= 0.000001:
+                beta = 0.000001
+
+            for j in range(Int(inner_limit)):
+                var prev = x_t
+                var base_denoised = sampler_step_value(
+                    config.sampler,
+                    x_t,
+                    positive_scalar,
+                    negative_scalar,
+                    sigma,
+                    sigma_next,
+                    Int32(i),
+                    config.cfg,
+                    config.seed,
+                )
+                var score_prompt = -(x_t - prompt_target)
+                var score_known = -(1.0 + lanpaint.lambda_scale) * (x_t - latent_scalar) + lanpaint.lambda_scale * (x_t - base_denoised)
+                var score = score_prompt * unknown_weight * beta + score_known * known_weight
+                velocity = velocity * friction_keep + score * step_amount
+                x_t = x_t + velocity * step_amount
+                inner_total = inner_total + Int32(1)
+                if lanpaint.inner_threshold > 0.0:
+                    var delta = _abs64(x_t - prev)
+                    if delta <= lanpaint.inner_threshold:
+                        stable_count = stable_count + Int32(1)
+                    else:
+                        stable_count = Int32(0)
+                    if stable_count > lanpaint.inner_patience:
+                        early_total = early_total + Int32(1)
+                        break
+                trace = trace * 0.9375 + x_t * 0.0625 + Float64(j) * 0.00001
+            x = x_t
+
+        denoised = sampler_step_value(
+            config.sampler,
+            x,
+            positive_scalar,
+            negative_scalar,
+            sigma,
+            sigma_next,
+            Int32(i),
+            config.cfg,
+            config.seed,
+        )
+        x = denoised
+        trace = trace * 0.875 + x * 0.125 + Float64(i) * 0.0001
+        ran = ran + Int32(1)
+
+    var result = LanPaintRunResult()
+    result.final_scalar = x
+    result.denoised_scalar = denoised
+    result.steps_run = ran
+    result.inner_iterations = inner_total
+    result.early_stop_count = early_total
+    result.sampler_name = sampler_kind_name(config.sampler)
+    result.scheduler_name = scheduler_kind_name(config.scheduler)
+    result.first_sigma = sigmas[Int(start)]
+    result.last_sigma = sigmas[Int(end)]
+    result.trace_hash = trace
+    result.seed = config.seed
+    return result^
+
+
 def _seed_noise(seed: Int64, step_index: Int32) -> Float64:
     var x = seed + Int64(step_index) * Int64(6361) + Int64(17)
     if x < Int64(0):
@@ -250,6 +422,12 @@ def _clamp01(v: Float64) -> Float64:
         return 0.0
     if v > 1.0:
         return 1.0
+    return v
+
+
+def _abs64(v: Float64) -> Float64:
+    if v < 0.0:
+        return -v
     return v
 
 

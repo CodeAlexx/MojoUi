@@ -46,6 +46,8 @@ def is_media_node(node: Node) -> Bool:
         or node_matches(node, String("imagescaleby"))
         or node_matches(node, String("imageinvert"))
         or node_matches(node, String("imageupscalewithmodel"))
+        or node_matches(node, String("lanpaint_maskblend"))
+        or node_matches(node, String("maskblend"))
         or node_matches(node, String("upscalemodelloader"))
     )
 
@@ -75,6 +77,8 @@ def execute_media_node(graph: Graph, node: Node, mut result: WorkflowExecutionRe
         return execute_ksampler_config(node, result)
     if node_matches(node, String("upscalemodelloader")):
         return execute_upscale_model_loader(node, result)
+    if node_matches(node, String("lanpaint_maskblend")) or node_matches(node, String("maskblend")):
+        return execute_mask_blend(graph, node, result)
     if (
         node_matches(node, String("imagescale"))
         or node_matches(node, String("imagescaleby"))
@@ -218,6 +222,43 @@ def execute_upscale_model_loader(node: Node, mut result: WorkflowExecutionResult
     var name = first_string_field(node, String("model_name"), String("upscale_model"), String("widget_0"), String("upscale_model.pth"))
     add_handle_outputs(node, result, NVT_MODEL, WV_MODEL, String("UPSCALE_MODEL"), String("upscale_model:") + name)
     result.add_log(String("upscale_model_loader ") + name)
+    return True
+
+
+def execute_mask_blend(graph: Graph, node: Node, mut result: WorkflowExecutionResult) raises -> Bool:
+    var image1 = incoming_value(graph, result, node.id, String("image1"))
+    var image2 = incoming_value(graph, result, node.id, String("image2"))
+    var mask = incoming_value(graph, result, node.id, String("mask"))
+    var width = image2.width
+    var height = image2.height
+    var seed = image2.seed
+    var path = image2.path.copy()
+    if width <= 0:
+        width = image1.width
+    if height <= 0:
+        height = image1.height
+    if seed < 0:
+        seed = image1.seed
+    if path.byte_length() == 0:
+        path = image1.path.copy()
+    if width <= 0:
+        width = result.request.width
+    if height <= 0:
+        height = result.request.height
+    if path.byte_length() == 0:
+        path = String("/tmp/lanpaint_mask_blend_") + String(node.id) + String(".png")
+    var overlap = first_int_field(node, String("blend_overlap"), String("widget_0"), String(""), Int32(1))
+    result.add_value(WorkflowValue.image_path(node.id, first_output_name(node, String("IMAGE")), path, width, height, seed))
+    result.add_log(
+        String("lanpaint_mask_blend overlap=")
+        + String(overlap)
+        + String(" mask=")
+        + String(mask.kind)
+        + String(" ")
+        + String(width)
+        + String("x")
+        + String(height)
+    )
     return True
 
 

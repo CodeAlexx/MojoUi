@@ -145,6 +145,8 @@ def _comfy_type_to_nvt(type_name: String) -> Int32:
         return NVT_LATENT
     if type_name == String("IMAGE") or type_name == String("image"):
         return NVT_IMAGE
+    if type_name == String("MASK") or type_name == String("mask"):
+        return NVT_IMAGE
     if type_name == String("CONDITIONING") or type_name == String("conditioning"):
         return NVT_CONDITIONING
     if type_name == String("MODEL") or type_name == String("model"):
@@ -168,6 +170,17 @@ def _comfy_type_to_nvt(type_name: String) -> Int32:
         return NVT_NUMBER
     if type_name == String("STRING") or type_name == String("TEXT") or type_name == String("string") or type_name == String("text"):
         return NVT_TEXT
+    if (
+        type_name == String("SAMPLER")
+        or type_name == String("GUIDER")
+        or type_name == String("NOISE")
+        or type_name == String("sampler")
+        or type_name == String("guider")
+        or type_name == String("noise")
+    ):
+        return NVT_TEXT
+    if type_name == String("SIGMAS") or type_name == String("sigmas"):
+        return NVT_NUMBER
     if type_name == String("SEED") or type_name == String("seed"):
         return NVT_SEED
     if type_name == String("BOOLEAN") or type_name == String("BOOL") or type_name == String("boolean") or type_name == String("bool"):
@@ -422,6 +435,13 @@ def _add_api_outputs(mut node: Node, class_type: String):
         node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
         node.add_output(PortRef(String("WIDTH"), NVT_NUMBER))
         node.add_output(PortRef(String("HEIGHT"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("lanpaint_samplercustom")):
+        node.add_output(PortRef(String("output"), NVT_LATENT))
+        node.add_output(PortRef(String("denoised_output"), NVT_LATENT))
+    elif _contains_ci(class_type, String("lanpaint_ksampler")):
+        node.add_output(PortRef(String("LATENT"), NVT_LATENT))
+    elif _contains_ci(class_type, String("lanpaint_maskblend")):
+        node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
     elif _contains_ci(class_type, String("cliptextencode")) or _contains_ci(class_type, String("conditioning")):
         node.add_output(PortRef(String("CONDITIONING"), NVT_CONDITIONING))
     elif _contains_ci(class_type, String("emptylatent")) or _contains_ci(class_type, String("latentimage")) or _contains_ci(class_type, String("repeatlatent")) or _contains_ci(class_type, String("latentupscale")) or _contains_ci(class_type, String("ksampler")) or _contains_ci(class_type, String("samplercustom")) or _contains_ci(class_type, String("vaeencode")):
@@ -436,6 +456,8 @@ def _add_api_outputs(mut node: Node, class_type: String):
 
 
 def _infer_port_type_from_name(name: String) -> Int32:
+    if _contains_ci(name, String("mask")):
+        return NVT_IMAGE
     if _contains_ci(name, String("opt_model")):
         return NVT_MODEL
     if _contains_ci(name, String("opt_clip")):
@@ -458,6 +480,10 @@ def _infer_port_type_from_name(name: String) -> Int32:
         return NVT_VIDEO
     if _contains_ci(name, String("seed")):
         return NVT_SEED
+    if _contains_ci(name, String("sampler")) or _contains_ci(name, String("guider")) or _contains_ci(name, String("noise")):
+        return NVT_TEXT
+    if _contains_ci(name, String("sigmas")):
+        return NVT_NUMBER
     if _contains_ci(name, String("width")) or _contains_ci(name, String("height")) or _contains_ci(name, String("steps")) or _contains_ci(name, String("cfg")) or _contains_ci(name, String("denoise")) or _contains_ci(name, String("amount")) or _contains_ci(name, String("scale")):
         return NVT_NUMBER
     if _contains_ci(name, String("enable")) or _contains_ci(name, String("enabled")) or _contains_ci(name, String("bool")):

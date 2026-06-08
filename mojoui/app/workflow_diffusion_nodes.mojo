@@ -4,9 +4,11 @@ from mojoui.nodes.graph import Graph
 from mojoui.nodes.node import Node
 from mojoui.nodes.port import NVT_CLIP, NVT_CONDITIONING, NVT_MODEL, NVT_VAE
 from mojoui.app.sampler_runtime import (
+    LanPaintConfig,
     SamplerConfig,
     parse_sampler_kind,
     parse_scheduler_kind,
+    run_lanpaint_sampler,
     run_sampler,
     text_conditioning_scalar,
 )
@@ -35,7 +37,9 @@ from mojoui.app.workflow_support import (
     first_output_name,
     first_string_field,
     incoming_value,
+    lanpaint_sampler_gpu_command,
     node_matches,
+    output_name_or,
     sampler_gpu_command,
     string_field,
 )
@@ -317,15 +321,37 @@ def execute_sampler(graph: Graph, node: Node, mut result: WorkflowExecutionResul
         negative = incoming_value(graph, result, node.id, String("uncond"))
 
     var cfg = SamplerConfig()
+    var is_lanpaint = node_matches(node, String("lanpaint"))
     var advanced = node_matches(node, String("ksampleradvanced")) or node_matches(node, String("swarmksampler"))
     if advanced:
         cfg.seed = first_i64_field(node, String("noise_seed"), String("seed"), String("widget_1"), Int64(0))
-        cfg.steps = first_int_field(node, String("steps"), String("widget_2"), String(""), Int32(20))
-        cfg.cfg = first_number_field(node, String("cfg"), String("widget_3"), String(""), 7.0)
-        cfg.sampler = parse_sampler_kind(first_string_field(node, String("sampler_name"), String("sampler"), String("widget_4"), String("euler")))
-        cfg.scheduler = parse_scheduler_kind(first_string_field(node, String("scheduler"), String("widget_5"), String(""), String("normal")))
-        cfg.start_at_step = first_int_field(node, String("start_at_step"), String("widget_6"), String(""), Int32(0))
-        cfg.end_at_step = first_int_field(node, String("end_at_step"), String("widget_7"), String(""), Int32(10000))
+        if is_lanpaint:
+            cfg.steps = first_int_field(node, String("steps"), String("widget_3"), String("widget_2"), Int32(20))
+            cfg.cfg = first_number_field(node, String("cfg"), String("widget_4"), String("widget_3"), 7.0)
+            cfg.sampler = parse_sampler_kind(first_string_field(node, String("sampler_name"), String("sampler"), String("widget_5"), String("euler")))
+            cfg.scheduler = parse_scheduler_kind(first_string_field(node, String("scheduler"), String("widget_6"), String("widget_5"), String("normal")))
+            cfg.start_at_step = first_int_field(node, String("start_at_step"), String("widget_7"), String("widget_6"), Int32(0))
+            cfg.end_at_step = first_int_field(node, String("end_at_step"), String("widget_8"), String("widget_7"), Int32(10000))
+        else:
+            cfg.steps = first_int_field(node, String("steps"), String("widget_2"), String(""), Int32(20))
+            cfg.cfg = first_number_field(node, String("cfg"), String("widget_3"), String(""), 7.0)
+            cfg.sampler = parse_sampler_kind(first_string_field(node, String("sampler_name"), String("sampler"), String("widget_4"), String("euler")))
+            cfg.scheduler = parse_scheduler_kind(first_string_field(node, String("scheduler"), String("widget_5"), String(""), String("normal")))
+            cfg.start_at_step = first_int_field(node, String("start_at_step"), String("widget_6"), String(""), Int32(0))
+            cfg.end_at_step = first_int_field(node, String("end_at_step"), String("widget_7"), String(""), Int32(10000))
+        cfg.add_noise = first_bool_field(node, String("add_noise"), String("widget_0"), String(""), True)
+    elif is_lanpaint and node_matches(node, String("samplercustomadvanced")):
+        cfg.seed = first_i64_field(node, String("noise_seed"), String("seed"), String(""), Int64(0))
+        cfg.steps = first_int_field(node, String("steps"), String("sampler_steps"), String(""), Int32(20))
+        cfg.cfg = first_number_field(node, String("cfg"), String("guidance"), String(""), 1.0)
+        cfg.sampler = parse_sampler_kind(first_string_field(node, String("sampler_name"), String("sampler_kind"), String(""), String("euler")))
+        cfg.scheduler = parse_scheduler_kind(first_string_field(node, String("scheduler"), String("schedule"), String(""), String("normal")))
+    elif is_lanpaint and node_matches(node, String("samplercustom")):
+        cfg.seed = first_i64_field(node, String("noise_seed"), String("seed"), String("widget_1"), Int64(0))
+        cfg.steps = first_int_field(node, String("steps"), String("sampler_steps"), String(""), Int32(20))
+        cfg.cfg = first_number_field(node, String("cfg"), String("widget_3"), String(""), 8.0)
+        cfg.sampler = parse_sampler_kind(first_string_field(node, String("sampler_name"), String("sampler_kind"), String(""), String("euler")))
+        cfg.scheduler = parse_scheduler_kind(first_string_field(node, String("scheduler"), String("schedule"), String(""), String("normal")))
         cfg.add_noise = first_bool_field(node, String("add_noise"), String("widget_0"), String(""), True)
     else:
         cfg.seed = first_i64_field(node, String("seed"), String("noise_seed"), String("widget_0"), Int64(0))
@@ -357,6 +383,75 @@ def execute_sampler(graph: Graph, node: Node, mut result: WorkflowExecutionResul
         height = result.request.height
     if batch <= 0:
         batch = 1
+    if is_lanpaint:
+        var lanpaint = _lanpaint_config_from_node(node)
+        var lanpaint_result = run_lanpaint_sampler(cfg, lanpaint, latent.scalar, positive.scalar, negative.scalar)
+        var lanpaint_out_port = first_output_name(node, String("LATENT"))
+        result.add_value(
+            WorkflowValue.latent_value(
+                node.id,
+                lanpaint_out_port,
+                width,
+                height,
+                batch,
+                cfg.seed,
+                lanpaint_result.final_scalar,
+            )
+        )
+        if node_matches(node, String("samplercustom")):
+            var denoised_port = output_name_or(node, String("denoised_output"), String("denoised_output"))
+            if denoised_port != lanpaint_out_port:
+                result.add_value(
+                    WorkflowValue.latent_value(
+                        node.id,
+                        denoised_port,
+                        width,
+                        height,
+                        batch,
+                        cfg.seed,
+                        lanpaint_result.denoised_scalar,
+                    )
+                )
+        var lanpaint_status = WLS_STAGED
+        if not result.device.dry_run:
+            lanpaint_status = WLS_LAUNCHED
+        var lanpaint_command = lanpaint_sampler_gpu_command(
+            String("serenitymojo/samplers/lanpaint_sampler.mojo"),
+            result.device,
+            lanpaint_result.sampler_name,
+            lanpaint_result.scheduler_name,
+            cfg,
+            lanpaint,
+            width,
+            height,
+        )
+        result.add_launch(
+            WorkflowLaunchAction(
+                node.id,
+                String("lanpaint_sampler"),
+                String("serenitymojo/samplers/lanpaint_sampler.mojo"),
+                result.device.device_kind,
+                result.device.device_index,
+                lanpaint_command,
+                String(""),
+                lanpaint_status,
+                result.device.dry_run,
+            )
+        )
+        result.add_log(
+            String("lanpaint_sampler ")
+            + lanpaint_result.sampler_name
+            + String("/")
+            + lanpaint_result.scheduler_name
+            + String(" steps=")
+            + String(lanpaint_result.steps_run)
+            + String(" inner=")
+            + String(lanpaint_result.inner_iterations)
+            + String(" mode=")
+            + lanpaint.prompt_mode
+        )
+        return True
+
     var sampler_result = run_sampler(cfg, latent.scalar, positive.scalar, negative.scalar)
     var out_port = first_output_name(node, String("LATENT"))
     result.add_value(
@@ -396,6 +491,41 @@ def execute_sampler(graph: Graph, node: Node, mut result: WorkflowExecutionResul
         + String(sampler_result.steps_run)
     )
     return True
+
+
+def _lanpaint_config_from_node(node: Node) raises -> LanPaintConfig:
+    var config = LanPaintConfig()
+    if node_matches(node, String("ksampleradvanced")):
+        config.num_steps = first_int_field(node, String("lanpaint_numsteps"), String("widget_10"), String("widget_7"), config.num_steps)
+        config.lambda_scale = first_number_field(node, String("lanpaint_lambda"), String("widget_11"), String(""), config.lambda_scale)
+        config.step_size = first_number_field(node, String("lanpaint_stepsize"), String("widget_12"), String(""), config.step_size)
+        config.beta = first_number_field(node, String("lanpaint_beta"), String("widget_13"), String(""), config.beta)
+        config.friction = first_number_field(node, String("lanpaint_friction"), String("widget_14"), String(""), config.friction)
+        config.prompt_mode = first_string_field(node, String("lanpaint_promptmode"), String("widget_15"), String(""), config.prompt_mode)
+        config.early_stop = first_int_field(node, String("lanpaint_earlystop"), String("widget_16"), String(""), config.early_stop)
+        config.inpainting_mode = first_string_field(node, String("inpainting_mode"), String("widget_18"), String(""), config.inpainting_mode)
+        config.inner_threshold = first_number_field(node, String("lanpaint_innerthreshold"), String("widget_19"), String(""), config.inner_threshold)
+        config.inner_patience = first_int_field(node, String("lanpaint_innerpatience"), String("widget_20"), String(""), config.inner_patience)
+    elif node_matches(node, String("samplercustomadvanced")):
+        config.num_steps = first_int_field(node, String("lanpaint_numsteps"), String("widget_0"), String(""), config.num_steps)
+        config.lambda_scale = first_number_field(node, String("lanpaint_lambda"), String("widget_1"), String(""), config.lambda_scale)
+        config.step_size = first_number_field(node, String("lanpaint_stepsize"), String("widget_2"), String(""), config.step_size)
+        config.beta = first_number_field(node, String("lanpaint_beta"), String("widget_3"), String(""), config.beta)
+        config.friction = first_number_field(node, String("lanpaint_friction"), String("widget_4"), String(""), config.friction)
+        config.prompt_mode = first_string_field(node, String("lanpaint_promptmode"), String("widget_5"), String(""), config.prompt_mode)
+        config.early_stop = first_int_field(node, String("lanpaint_earlystop"), String("widget_6"), String(""), config.early_stop)
+        config.inner_threshold = first_number_field(node, String("lanpaint_innerthreshold"), String("widget_8"), String(""), config.inner_threshold)
+        config.inner_patience = first_int_field(node, String("lanpaint_innerpatience"), String("widget_9"), String(""), config.inner_patience)
+    elif node_matches(node, String("samplercustom")):
+        config.num_steps = first_int_field(node, String("lanpaint_numsteps"), String("widget_4"), String("widget_0"), config.num_steps)
+        config.prompt_mode = first_string_field(node, String("lanpaint_promptmode"), String("widget_5"), String("widget_1"), config.prompt_mode)
+    else:
+        config.num_steps = first_int_field(node, String("lanpaint_numsteps"), String("widget_7"), String(""), config.num_steps)
+        config.prompt_mode = first_string_field(node, String("lanpaint_promptmode"), String("widget_8"), String(""), config.prompt_mode)
+        config.inpainting_mode = first_string_field(node, String("inpainting_mode"), String("widget_10"), String(""), config.inpainting_mode)
+    if config.inner_patience < Int32(1):
+        config.inner_patience = Int32(1)
+    return config^
 
 
 def execute_vae_decode(graph: Graph, node: Node, mut result: WorkflowExecutionResult) raises -> Bool:

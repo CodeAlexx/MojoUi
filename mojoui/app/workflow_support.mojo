@@ -11,7 +11,7 @@ from mojoui.nodes.port import (
     NVT_TEXT,
     NVT_VAE,
 )
-from mojoui.app.sampler_runtime import SamplerConfig
+from mojoui.app.sampler_runtime import LanPaintConfig, SamplerConfig
 from mojoui.app.workflow_types import (
     WorkflowDeviceConfig,
     WorkflowExecutionResult,
@@ -337,6 +337,39 @@ def sampler_gpu_command(
         + String(width)
         + String(" --height ")
         + String(height)
+    )
+
+
+def lanpaint_sampler_gpu_command(
+    entry: String,
+    device: WorkflowDeviceConfig,
+    sampler_name: String,
+    scheduler_name: String,
+    config: SamplerConfig,
+    lanpaint: LanPaintConfig,
+    width: Int32,
+    height: Int32,
+) -> String:
+    return (
+        sampler_gpu_command(entry, device, sampler_name, scheduler_name, config, width, height)
+        + String(" --lanpaint-num-steps ")
+        + String(lanpaint.num_steps)
+        + String(" --lanpaint-lambda ")
+        + String(lanpaint.lambda_scale)
+        + String(" --lanpaint-step-size ")
+        + String(lanpaint.step_size)
+        + String(" --lanpaint-beta ")
+        + String(lanpaint.beta)
+        + String(" --lanpaint-friction ")
+        + String(lanpaint.friction)
+        + String(" --lanpaint-prompt-mode \"")
+        + lanpaint.prompt_mode
+        + String("\" --lanpaint-early-stop ")
+        + String(lanpaint.early_stop)
+        + String(" --lanpaint-inner-threshold ")
+        + String(lanpaint.inner_threshold)
+        + String(" --lanpaint-inner-patience ")
+        + String(lanpaint.inner_patience)
     )
 
 

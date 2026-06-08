@@ -64,8 +64,8 @@ def test_register_builtins_count() raises:
     """The `register_builtins` helper registers ComfyUI-shaped core/media/Ideogram typedefs."""
     var reg = NodeRegistry()
     register_builtins(reg)
-    if reg.size() != 82:
-        raise Error("expected 82 builtins, got " + String(reg.size()))
+    if reg.size() != 87:
+        raise Error("expected 87 builtins, got " + String(reg.size()))
     if not reg.is_registered(String("core/load_checkpoint")):
         raise Error("missing core/load_checkpoint")
     if not reg.is_registered(String("core/encode_prompt")):
@@ -126,6 +126,16 @@ def test_register_builtins_count() raises:
         raise Error("missing KJ INTConstant import typedef")
     if not reg.is_registered(String("comfy/JoinStrings")):
         raise Error("missing KJ JoinStrings import typedef")
+    if not reg.is_registered(String("comfy/LanPaint_KSampler")):
+        raise Error("missing LanPaint KSampler import typedef")
+    if not reg.is_registered(String("comfy/LanPaint_KSamplerAdvanced")):
+        raise Error("missing LanPaint KSampler Advanced import typedef")
+    if not reg.is_registered(String("comfy/LanPaint_SamplerCustom")):
+        raise Error("missing LanPaint SamplerCustom import typedef")
+    if not reg.is_registered(String("comfy/LanPaint_SamplerCustomAdvanced")):
+        raise Error("missing LanPaint SamplerCustomAdvanced import typedef")
+    if not reg.is_registered(String("comfy/LanPaint_MaskBlend")):
+        raise Error("missing LanPaint MaskBlend import typedef")
     print("  PASS test_register_builtins_count")
 
 
@@ -134,8 +144,8 @@ def test_by_category() raises:
     var reg = NodeRegistry()
     register_builtins(reg)
     var groups = reg.by_category()
-    if len(groups) != 23:
-        raise Error("expected 23 categories, got " + String(len(groups)))
+    if len(groups) != 25:
+        raise Error("expected 25 categories, got " + String(len(groups)))
     if not (String("core") in groups):
         raise Error("missing 'core' category")
     if not (String("sampler") in groups):
@@ -164,6 +174,10 @@ def test_by_category() raises:
         raise Error("missing 'kj' category")
     if not (String("swarm") in groups):
         raise Error("missing 'swarm' category")
+    if not (String("lanpaint/sampling") in groups):
+        raise Error("missing 'lanpaint/sampling' category")
+    if not (String("lanpaint/image") in groups):
+        raise Error("missing 'lanpaint/image' category")
     if not (String("kj/constants") in groups):
         raise Error("missing 'kj/constants' category")
     if not (String("kj/text") in groups):
@@ -208,6 +222,10 @@ def test_by_category() raises:
         raise Error("kj/latents category should have 1 typedef")
     if len(groups[String("swarm")]) != 4:
         raise Error("swarm category should have 4 typedefs")
+    if len(groups[String("lanpaint/sampling")]) != 4:
+        raise Error("lanpaint/sampling category should have 4 typedefs")
+    if len(groups[String("lanpaint/image")]) != 1:
+        raise Error("lanpaint/image category should have 1 typedef")
     print("  PASS test_by_category")
 
 

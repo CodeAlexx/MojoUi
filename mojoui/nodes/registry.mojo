@@ -1438,3 +1438,119 @@ def register_comfy_compat_extension_nodes(mut registry: NodeRegistry):
     kj_latent_preset.with_field(String("batch_size"), FieldValue.int_(Int64(1)))
     kj_latent_preset.with_size(Vec2(330.0, 155.0))
     registry.register(kj_latent_preset^)
+
+    var lanpaint_ksampler = NodeTypeDef(
+        String("comfy/LanPaint_KSampler"),
+        String("LanPaint KSampler"),
+        String("lanpaint/sampling"),
+    )
+    lanpaint_ksampler.with_input(String("model"), NVT_MODEL)
+    lanpaint_ksampler.with_input(String("positive"), NVT_CONDITIONING)
+    lanpaint_ksampler.with_input(String("negative"), NVT_CONDITIONING)
+    lanpaint_ksampler.with_input(String("latent_image"), NVT_LATENT)
+    lanpaint_ksampler.with_output(String("LATENT"), NVT_LATENT)
+    lanpaint_ksampler.with_field(String("seed"), FieldValue.int_(Int64(0)))
+    lanpaint_ksampler.with_field(String("steps"), FieldValue.int_(Int64(20)))
+    lanpaint_ksampler.with_field(String("cfg"), FieldValue.number(7.0))
+    lanpaint_ksampler.with_field(String("sampler_name"), FieldValue.string(String("euler")))
+    lanpaint_ksampler.with_field(String("scheduler"), FieldValue.string(String("normal")))
+    lanpaint_ksampler.with_field(String("denoise"), FieldValue.number(1.0))
+    lanpaint_ksampler.with_field(String("LanPaint_NumSteps"), FieldValue.int_(Int64(5)))
+    lanpaint_ksampler.with_field(String("LanPaint_PromptMode"), FieldValue.string(String("Image First")))
+    lanpaint_ksampler.with_field(String("LanPaint_Info"), FieldValue.string(String("LanPaint KSampler.")))
+    lanpaint_ksampler.with_field(String("Inpainting_mode"), FieldValue.string(String("Image Inpainting")))
+    lanpaint_ksampler.with_size(Vec2(390.0, 572.0))
+    registry.register(lanpaint_ksampler^)
+
+    var lanpaint_ksampler_adv = NodeTypeDef(
+        String("comfy/LanPaint_KSamplerAdvanced"),
+        String("LanPaint KSampler Advanced"),
+        String("lanpaint/sampling"),
+    )
+    lanpaint_ksampler_adv.with_input(String("model"), NVT_MODEL)
+    lanpaint_ksampler_adv.with_input(String("positive"), NVT_CONDITIONING)
+    lanpaint_ksampler_adv.with_input(String("negative"), NVT_CONDITIONING)
+    lanpaint_ksampler_adv.with_input(String("latent_image"), NVT_LATENT)
+    lanpaint_ksampler_adv.with_output(String("LATENT"), NVT_LATENT)
+    lanpaint_ksampler_adv.with_field(String("add_noise"), FieldValue.string(String("enable")))
+    lanpaint_ksampler_adv.with_field(String("noise_seed"), FieldValue.int_(Int64(0)))
+    lanpaint_ksampler_adv.with_field(String("steps"), FieldValue.int_(Int64(30)))
+    lanpaint_ksampler_adv.with_field(String("cfg"), FieldValue.number(5.0))
+    lanpaint_ksampler_adv.with_field(String("sampler_name"), FieldValue.string(String("euler")))
+    lanpaint_ksampler_adv.with_field(String("scheduler"), FieldValue.string(String("normal")))
+    lanpaint_ksampler_adv.with_field(String("start_at_step"), FieldValue.int_(Int64(0)))
+    lanpaint_ksampler_adv.with_field(String("end_at_step"), FieldValue.int_(Int64(10000)))
+    lanpaint_ksampler_adv.with_field(String("return_with_leftover_noise"), FieldValue.string(String("disable")))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_NumSteps"), FieldValue.int_(Int64(5)))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_Lambda"), FieldValue.number(16.0))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_StepSize"), FieldValue.number(0.2))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_Beta"), FieldValue.number(1.0))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_Friction"), FieldValue.number(15.0))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_PromptMode"), FieldValue.string(String("Image First")))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_EarlyStop"), FieldValue.int_(Int64(1)))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_Info"), FieldValue.string(String("LanPaint KSampler Adv.")))
+    lanpaint_ksampler_adv.with_field(String("Inpainting_mode"), FieldValue.string(String("Image Inpainting")))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_InnerThreshold"), FieldValue.number(0.0))
+    lanpaint_ksampler_adv.with_field(String("LanPaint_InnerPatience"), FieldValue.int_(Int64(1)))
+    lanpaint_ksampler_adv.with_size(Vec2(400.0, 620.0))
+    registry.register(lanpaint_ksampler_adv^)
+
+    var lanpaint_custom = NodeTypeDef(
+        String("comfy/LanPaint_SamplerCustom"),
+        String("LanPaint Sampler Custom"),
+        String("lanpaint/sampling"),
+    )
+    lanpaint_custom.with_input(String("model"), NVT_MODEL)
+    lanpaint_custom.with_input(String("positive"), NVT_CONDITIONING)
+    lanpaint_custom.with_input(String("negative"), NVT_CONDITIONING)
+    lanpaint_custom.with_input(String("sampler"), NVT_TEXT)
+    lanpaint_custom.with_input(String("sigmas"), NVT_NUMBER)
+    lanpaint_custom.with_input(String("latent_image"), NVT_LATENT)
+    lanpaint_custom.with_output(String("output"), NVT_LATENT)
+    lanpaint_custom.with_output(String("denoised_output"), NVT_LATENT)
+    lanpaint_custom.with_field(String("add_noise"), FieldValue.bool_(True))
+    lanpaint_custom.with_field(String("noise_seed"), FieldValue.int_(Int64(0)))
+    lanpaint_custom.with_field(String("cfg"), FieldValue.number(8.0))
+    lanpaint_custom.with_field(String("LanPaint_NumSteps"), FieldValue.int_(Int64(5)))
+    lanpaint_custom.with_field(String("LanPaint_PromptMode"), FieldValue.string(String("Image First")))
+    lanpaint_custom.with_field(String("LanPaint_Info"), FieldValue.string(String("LanPaint Custom Sampler.")))
+    lanpaint_custom.with_size(Vec2(420.0, 360.0))
+    registry.register(lanpaint_custom^)
+
+    var lanpaint_custom_adv = NodeTypeDef(
+        String("comfy/LanPaint_SamplerCustomAdvanced"),
+        String("LanPaint Sampler Custom Advanced"),
+        String("lanpaint/sampling"),
+    )
+    lanpaint_custom_adv.with_input(String("noise"), NVT_TEXT)
+    lanpaint_custom_adv.with_input(String("guider"), NVT_TEXT)
+    lanpaint_custom_adv.with_input(String("sampler"), NVT_TEXT)
+    lanpaint_custom_adv.with_input(String("sigmas"), NVT_NUMBER)
+    lanpaint_custom_adv.with_input(String("latent_image"), NVT_LATENT)
+    lanpaint_custom_adv.with_output(String("output"), NVT_LATENT)
+    lanpaint_custom_adv.with_output(String("denoised_output"), NVT_LATENT)
+    lanpaint_custom_adv.with_field(String("LanPaint_NumSteps"), FieldValue.int_(Int64(5)))
+    lanpaint_custom_adv.with_field(String("LanPaint_Lambda"), FieldValue.number(16.0))
+    lanpaint_custom_adv.with_field(String("LanPaint_StepSize"), FieldValue.number(0.2))
+    lanpaint_custom_adv.with_field(String("LanPaint_Beta"), FieldValue.number(1.0))
+    lanpaint_custom_adv.with_field(String("LanPaint_Friction"), FieldValue.number(15.0))
+    lanpaint_custom_adv.with_field(String("LanPaint_PromptMode"), FieldValue.string(String("Image First")))
+    lanpaint_custom_adv.with_field(String("LanPaint_EarlyStop"), FieldValue.int_(Int64(1)))
+    lanpaint_custom_adv.with_field(String("LanPaint_Info"), FieldValue.string(String("LanPaint Custom Sampler Adv.")))
+    lanpaint_custom_adv.with_field(String("LanPaint_InnerThreshold"), FieldValue.number(0.0))
+    lanpaint_custom_adv.with_field(String("LanPaint_InnerPatience"), FieldValue.int_(Int64(1)))
+    lanpaint_custom_adv.with_size(Vec2(420.0, 420.0))
+    registry.register(lanpaint_custom_adv^)
+
+    var lanpaint_mask_blend = NodeTypeDef(
+        String("comfy/LanPaint_MaskBlend"),
+        String("LanPaint Mask Blend"),
+        String("lanpaint/image"),
+    )
+    lanpaint_mask_blend.with_input(String("image1"), NVT_IMAGE)
+    lanpaint_mask_blend.with_input(String("image2"), NVT_IMAGE)
+    lanpaint_mask_blend.with_input(String("mask"), NVT_IMAGE)
+    lanpaint_mask_blend.with_output(String("IMAGE"), NVT_IMAGE)
+    lanpaint_mask_blend.with_field(String("blend_overlap"), FieldValue.int_(Int64(1)))
+    lanpaint_mask_blend.with_size(Vec2(280.0, 135.0))
+    registry.register(lanpaint_mask_blend^)

@@ -12,6 +12,7 @@ from mojoui.nodes.port import (
     NVT_MODEL,
     NVT_CLIP,
     NVT_CONDITIONING,
+    NVT_LATENT,
     NVT_NUMBER,
     NVT_TEXT,
 )
@@ -186,9 +187,61 @@ def test_parse_popular_extension_api_prompt() raises:
     print("PASS: test_parse_popular_extension_api_prompt")
 
 
+def test_parse_lanpaint_visual_workflow() raises:
+    var raw = String(
+        "{"
+        + "\"nodes\":["
+        + "{\"id\":1,\"type\":\"LanPaint_MaskBlend\",\"pos\":[10,20],\"size\":[280,135],\"inputs\":[{\"name\":\"image1\",\"type\":\"IMAGE\",\"link\":1},{\"name\":\"image2\",\"type\":\"IMAGE\",\"link\":2},{\"name\":\"mask\",\"type\":\"MASK\",\"link\":3}],\"outputs\":[{\"name\":\"IMAGE\",\"type\":\"IMAGE\",\"slot_index\":0,\"links\":[]}]},"
+        + "{\"id\":2,\"type\":\"LanPaint_SamplerCustomAdvanced\",\"pos\":[320,20],\"size\":[420,420],\"inputs\":[{\"name\":\"noise\",\"type\":\"NOISE\",\"link\":4},{\"name\":\"guider\",\"type\":\"GUIDER\",\"link\":5},{\"name\":\"sampler\",\"type\":\"SAMPLER\",\"link\":6},{\"name\":\"sigmas\",\"type\":\"SIGMAS\",\"link\":7},{\"name\":\"latent_image\",\"type\":\"LATENT\",\"link\":8}],\"outputs\":[{\"name\":\"output\",\"type\":\"LATENT\",\"slot_index\":0,\"links\":[]},{\"name\":\"denoised_output\",\"type\":\"LATENT\",\"slot_index\":1,\"links\":[]}],\"widgets_values\":[5,16,0.2,1,15,\"Image First\",1,\"LanPaint\",0,1]}"
+        + "],\"links\":[],\"groups\":[]"
+        + "}"
+    )
+    var imported = parse_comfy_workflow(raw)
+    if imported.graph.node_count() != 2:
+        _fail("lanpaint visual: expected 2 nodes")
+    if imported.graph.nodes[0].inputs[2].value_type != NVT_IMAGE:
+        _fail("lanpaint visual: MASK socket should map to image-like value")
+    if imported.graph.nodes[1].inputs[0].value_type != NVT_TEXT:
+        _fail("lanpaint visual: NOISE socket should map to text handle")
+    if imported.graph.nodes[1].inputs[2].value_type != NVT_TEXT:
+        _fail("lanpaint visual: SAMPLER socket should map to text handle")
+    if imported.graph.nodes[1].inputs[3].value_type != NVT_NUMBER:
+        _fail("lanpaint visual: SIGMAS socket should map to numeric schedule handle")
+    if imported.graph.nodes[1].outputs[0].name != String("output") or imported.graph.nodes[1].outputs[0].value_type != NVT_LATENT:
+        _fail("lanpaint visual: custom sampler output should be LATENT")
+    if imported.graph.nodes[1].outputs[1].name != String("denoised_output") or imported.graph.nodes[1].outputs[1].value_type != NVT_LATENT:
+        _fail("lanpaint visual: custom sampler denoised output should be LATENT")
+    print("PASS: test_parse_lanpaint_visual_workflow")
+
+
+def test_parse_lanpaint_api_prompt() raises:
+    var raw = String(
+        "{"
+        + "\"1\":{\"class_type\":\"EmptyLatentImage\",\"inputs\":{\"width\":1024,\"height\":1024}},"
+        + "\"2\":{\"class_type\":\"LanPaint_SamplerCustomAdvanced\",\"inputs\":{\"latent_image\":[\"1\",0],\"LanPaint_NumSteps\":5,\"LanPaint_PromptMode\":\"Image First\"}},"
+        + "\"3\":{\"class_type\":\"LanPaint_MaskBlend\",\"inputs\":{\"image1\":[\"4\",0],\"image2\":[\"4\",0],\"mask\":[\"4\",0]}},"
+        + "\"4\":{\"class_type\":\"LoadImage\",\"inputs\":{\"image\":\"source.png\"}}"
+        + "}"
+    )
+    var imported = parse_comfy_workflow(raw)
+    if imported.graph.node_count() != 4:
+        _fail("lanpaint api: expected 4 nodes")
+    if len(imported.graph.nodes[1].outputs) != 2:
+        _fail("lanpaint api: custom sampler should infer two outputs")
+    if imported.graph.nodes[1].outputs[0].name != String("output"):
+        _fail("lanpaint api: first output should be output")
+    if imported.graph.nodes[1].outputs[1].name != String("denoised_output"):
+        _fail("lanpaint api: second output should be denoised_output")
+    if imported.graph.nodes[2].outputs[0].value_type != NVT_IMAGE:
+        _fail("lanpaint api: MaskBlend should infer IMAGE output")
+    print("PASS: test_parse_lanpaint_api_prompt")
+
+
 def main() raises:
     test_parse_visual_workflow_nodes_links_groups()
     test_parse_swarm_workflow_wrapper()
     test_parse_comfy_api_prompt()
     test_parse_popular_extension_api_prompt()
+    test_parse_lanpaint_visual_workflow()
+    test_parse_lanpaint_api_prompt()
     print("PASS: all Comfy workflow import smoke tests")
