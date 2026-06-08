@@ -181,6 +181,57 @@ def combo_row(
     return combobox(ctx, id_str, options, selected_index, is_open)
 
 
+def _option_index(options: List[String], value: String) -> Int32:
+    for i in range(len(options)):
+        if options[i] == value:
+            return Int32(i)
+    return Int32(-1)
+
+
+def _sync_open_id(id_str: String, was_open: Bool, is_open: Bool, mut open_id: String):
+    if is_open:
+        open_id = id_str.copy()
+    elif was_open:
+        open_id = String("")
+
+
+def select_index_row(
+    mut ctx: Context,
+    label_w: Int32,
+    value_w: Int32,
+    name: String,
+    id_str: String,
+    options: List[String],
+    mut selected_index: Int32,
+    mut open_id: String,
+) -> Bool:
+    var is_open = open_id == id_str
+    var was_open = is_open
+    var changed = combo_row(ctx, label_w, value_w, name, id_str, options, selected_index, is_open)
+    _sync_open_id(id_str.copy(), was_open, is_open, open_id)
+    return changed
+
+
+def select_string_row(
+    mut ctx: Context,
+    label_w: Int32,
+    value_w: Int32,
+    name: String,
+    id_str: String,
+    options: List[String],
+    mut value: String,
+    mut open_id: String,
+) -> Bool:
+    var selected_index = _option_index(options, value.copy())
+    var is_open = open_id == id_str
+    var was_open = is_open
+    var changed = combo_row(ctx, label_w, value_w, name, id_str, options, selected_index, is_open)
+    if selected_index >= 0 and selected_index < Int32(len(options)):
+        value = options[Int(selected_index)].copy()
+    _sync_open_id(id_str.copy(), was_open, is_open, open_id)
+    return changed
+
+
 def toggle_row(
     mut ctx: Context,
     label_w: Int32,
