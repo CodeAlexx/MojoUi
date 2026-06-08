@@ -237,6 +237,57 @@ def test_parse_lanpaint_api_prompt() raises:
     print("PASS: test_parse_lanpaint_api_prompt")
 
 
+def test_parse_vhs_visual_workflow() raises:
+    var raw = String(
+        "{"
+        + "\"nodes\":["
+        + "{\"id\":1,\"type\":\"VHS_LoadVideo\",\"pos\":[54,89],\"size\":[235,384],\"outputs\":[{\"name\":\"IMAGE\",\"type\":\"IMAGE\",\"slot_index\":0,\"links\":[1]},{\"name\":\"frame_count\",\"type\":\"INT\",\"slot_index\":1,\"links\":null},{\"name\":\"audio\",\"type\":\"VHS_AUDIO\",\"slot_index\":2,\"links\":null},{\"name\":\"video_info\",\"type\":\"VHS_VIDEOINFO\",\"slot_index\":3,\"links\":null}],\"widgets_values\":{\"video\":\"leader.webm\",\"force_rate\":8,\"custom_width\":304,\"custom_height\":312,\"frame_load_cap\":16}},"
+        + "{\"id\":2,\"type\":\"VHS_VideoCombine\",\"pos\":[629,222],\"size\":{\"0\":315,\"1\":250},\"inputs\":[{\"name\":\"images\",\"type\":\"IMAGE\",\"link\":1},{\"name\":\"audio\",\"type\":\"VHS_AUDIO\",\"link\":null}],\"outputs\":[{\"name\":\"Filenames\",\"type\":\"VHS_FILENAMES\",\"slot_index\":0,\"links\":null}],\"widgets_values\":{\"frame_rate\":8,\"filename_prefix\":\"AnimateDiff\",\"format\":\"video/webm\",\"save_output\":true}}"
+        + "],\"links\":[[1,1,0,2,0,\"IMAGE\"]],\"groups\":[]"
+        + "}"
+    )
+    var imported = parse_comfy_workflow(raw)
+    if imported.graph.node_count() != 2:
+        _fail("vhs visual: expected 2 nodes")
+    if imported.graph.edge_count() != 1:
+        _fail("vhs visual: expected 1 edge")
+    if imported.graph.nodes[0].outputs[2].value_type != NVT_TEXT:
+        _fail("vhs visual: VHS_AUDIO should map to text handle")
+    if imported.graph.nodes[0].outputs[3].value_type != NVT_TEXT:
+        _fail("vhs visual: VHS_VIDEOINFO should map to text handle")
+    if imported.graph.nodes[1].outputs[0].value_type != NVT_TEXT:
+        _fail("vhs visual: VHS_FILENAMES should map to text handle")
+    var video = imported.graph.nodes[0].get_field(String("video"))
+    if video.kind != FK_STRING or video.str_val != String("leader.webm"):
+        _fail("vhs visual: object widgets_values should preserve named video field")
+    print("PASS: test_parse_vhs_visual_workflow")
+
+
+def test_parse_vhs_api_prompt() raises:
+    var raw = String(
+        "{"
+        + "\"1\":{\"class_type\":\"VHS_LoadVideoPath\",\"inputs\":{\"video\":\"/tmp/input.mp4\",\"force_rate\":12,\"frame_load_cap\":24}},"
+        + "\"2\":{\"class_type\":\"VHS_VideoInfoLoaded\",\"inputs\":{\"video_info\":[\"1\",3]}},"
+        + "\"3\":{\"class_type\":\"VHS_SelectEveryNthImage\",\"inputs\":{\"images\":[\"1\",0],\"select_every_nth\":2}},"
+        + "\"4\":{\"class_type\":\"VHS_VideoCombine\",\"inputs\":{\"images\":[\"3\",0],\"frame_rate\":12,\"format\":\"video/mp4\"}}"
+        + "}"
+    )
+    var imported = parse_comfy_workflow(raw)
+    if imported.graph.node_count() != 4:
+        _fail("vhs api: expected 4 nodes")
+    if imported.graph.nodes[0].outputs[0].value_type != NVT_IMAGE:
+        _fail("vhs api: LoadVideoPath should infer IMAGE output")
+    if imported.graph.nodes[0].outputs[3].value_type != NVT_TEXT:
+        _fail("vhs api: LoadVideoPath should infer video_info handle")
+    if len(imported.graph.nodes[1].outputs) != 5:
+        _fail("vhs api: VideoInfoLoaded should infer 5 outputs")
+    if imported.graph.nodes[2].outputs[0].value_type != NVT_IMAGE:
+        _fail("vhs api: SelectEveryNthImage should infer image output")
+    if imported.graph.nodes[3].outputs[0].name != String("Filenames"):
+        _fail("vhs api: VideoCombine should infer Filenames output")
+    print("PASS: test_parse_vhs_api_prompt")
+
+
 def main() raises:
     test_parse_visual_workflow_nodes_links_groups()
     test_parse_swarm_workflow_wrapper()
@@ -244,4 +295,6 @@ def main() raises:
     test_parse_popular_extension_api_prompt()
     test_parse_lanpaint_visual_workflow()
     test_parse_lanpaint_api_prompt()
+    test_parse_vhs_visual_workflow()
+    test_parse_vhs_api_prompt()
     print("PASS: all Comfy workflow import smoke tests")

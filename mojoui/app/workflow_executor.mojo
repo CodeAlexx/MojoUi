@@ -59,6 +59,10 @@ from mojoui.app.workflow_media_nodes import (
     execute_text_passthrough,
     is_media_node,
 )
+from mojoui.app.workflow_vhs_nodes import (
+    execute_vhs_node,
+    is_vhs_node,
+)
 
 
 def execute_workflow(graph: Graph, canvas: CanvasState) raises -> WorkflowExecutionResult:
@@ -112,6 +116,8 @@ def execute_node(graph: Graph, node: Node, mut result: WorkflowExecutionResult) 
         return execute_diffusion_node(graph, node, result)
     if is_ideogram_node(node):
         return execute_ideogram_node(graph, node, result)
+    if is_vhs_node(node):
+        return execute_vhs_node(graph, node, result)
     if is_media_node(node):
         return execute_media_node(graph, node, result)
     if has_output_kind(node, NVT_TEXT):

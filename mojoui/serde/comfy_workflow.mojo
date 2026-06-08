@@ -188,6 +188,20 @@ def _comfy_type_to_nvt(type_name: String) -> Int32:
     if type_name == String("VIDEO") or type_name == String("video"):
         return NVT_VIDEO
     if (
+        type_name == String("AUDIO")
+        or type_name == String("VHS_AUDIO")
+        or type_name == String("VHS_VIDEOINFO")
+        or type_name == String("VHS_FILENAMES")
+        or type_name == String("VHS_BatchManager")
+        or type_name == String("audio")
+        or type_name == String("vhs_audio")
+        or type_name == String("vhs_videoinfo")
+        or type_name == String("vhs_filenames")
+        or type_name == String("vhs_batchmanager")
+        or type_name == String("*")
+    ):
+        return NVT_TEXT
+    if (
         type_name == String("BBOX")
         or type_name == String("bbox")
         or type_name == String("BOUNDINGBOX")
@@ -384,7 +398,58 @@ def _default_api_node_size(class_type: String) -> Vec2:
 
 
 def _add_api_outputs(mut node: Node, class_type: String):
-    if _contains_ci(class_type, String("checkpointloader")):
+    if _contains_ci(class_type, String("vhs_loadvideoffmpeg")):
+        node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+        node.add_output(PortRef(String("mask"), NVT_IMAGE))
+        node.add_output(PortRef(String("audio"), NVT_TEXT))
+        node.add_output(PortRef(String("video_info"), NVT_TEXT))
+    elif _contains_ci(class_type, String("vhs_loadvideo")):
+        node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+        node.add_output(PortRef(String("frame_count"), NVT_NUMBER))
+        node.add_output(PortRef(String("audio"), NVT_TEXT))
+        node.add_output(PortRef(String("video_info"), NVT_TEXT))
+    elif _contains_ci(class_type, String("vhs_loadimages")):
+        node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+        node.add_output(PortRef(String("MASK"), NVT_IMAGE))
+        node.add_output(PortRef(String("frame_count"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("vhs_loadimagepath")):
+        node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+        node.add_output(PortRef(String("mask"), NVT_IMAGE))
+    elif _contains_ci(class_type, String("vhs_videocombine")):
+        node.add_output(PortRef(String("Filenames"), NVT_TEXT))
+    elif _contains_ci(class_type, String("vhs_batchmanager")):
+        node.add_output(PortRef(String("VHS_BatchManager"), NVT_TEXT))
+    elif _contains_ci(class_type, String("vhs_videoinfo")):
+        _add_vhs_video_info_outputs(node, class_type)
+    elif _contains_ci(class_type, String("vhs_selectfilename")) or _contains_ci(class_type, String("vhs_selectlatest")):
+        node.add_output(PortRef(String("Filename"), NVT_TEXT))
+    elif _contains_ci(class_type, String("vhs_loadaudio")):
+        node.add_output(PortRef(String("audio"), NVT_TEXT))
+        node.add_output(PortRef(String("duration"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("vhs_audiotovhsaudio")) or _contains_ci(class_type, String("vhs_vhsaudiotoaudio")):
+        node.add_output(PortRef(String("audio"), NVT_TEXT))
+    elif _contains_ci(class_type, String("vhs_vaedecodebatched")):
+        node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+    elif _contains_ci(class_type, String("vhs_vaeencodebatched")):
+        node.add_output(PortRef(String("LATENT"), NVT_LATENT))
+    elif _contains_ci(class_type, String("vhs_splitlatents")):
+        _add_vhs_split_outputs(node, NVT_LATENT, String("LATENT"))
+    elif _contains_ci(class_type, String("vhs_splitimages")) or _contains_ci(class_type, String("vhs_splitmasks")):
+        _add_vhs_split_outputs(node, NVT_IMAGE, String("IMAGE"))
+    elif _contains_ci(class_type, String("vhs_mergelatents")) or _contains_ci(class_type, String("vhs_duplicatelatents")) or _contains_ci(class_type, String("vhs_selecteverynthlatent")) or _contains_ci(class_type, String("vhs_selectlatents")):
+        node.add_output(PortRef(String("LATENT"), NVT_LATENT))
+        node.add_output(PortRef(String("count"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("vhs_mergeimages")) or _contains_ci(class_type, String("vhs_duplicateimages")) or _contains_ci(class_type, String("vhs_selecteverynthimage")) or _contains_ci(class_type, String("vhs_selectimages")):
+        node.add_output(PortRef(String("IMAGE"), NVT_IMAGE))
+        node.add_output(PortRef(String("count"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("vhs_mergemasks")) or _contains_ci(class_type, String("vhs_duplicatemasks")) or _contains_ci(class_type, String("vhs_selecteverynthmask")) or _contains_ci(class_type, String("vhs_selectmasks")):
+        node.add_output(PortRef(String("MASK"), NVT_IMAGE))
+        node.add_output(PortRef(String("count"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("vhs_getlatentcount")) or _contains_ci(class_type, String("vhs_getimagecount")) or _contains_ci(class_type, String("vhs_getmaskcount")):
+        node.add_output(PortRef(String("count"), NVT_NUMBER))
+    elif _contains_ci(class_type, String("vhs_unbatch")):
+        node.add_output(PortRef(String("unbatched"), NVT_TEXT))
+    elif _contains_ci(class_type, String("checkpointloader")):
         node.add_output(PortRef(String("MODEL"), NVT_MODEL))
         node.add_output(PortRef(String("CLIP"), NVT_CLIP))
         node.add_output(PortRef(String("VAE"), NVT_VAE))
@@ -455,9 +520,33 @@ def _add_api_outputs(mut node: Node, class_type: String):
         node.add_output(PortRef(String("STRING"), NVT_TEXT))
 
 
+def _add_vhs_video_info_outputs(mut node: Node, class_type: String):
+    if not _contains_ci(class_type, String("loaded")):
+        node.add_output(PortRef(String("source_fps"), NVT_NUMBER))
+        node.add_output(PortRef(String("source_frame_count"), NVT_NUMBER))
+        node.add_output(PortRef(String("source_duration"), NVT_NUMBER))
+        node.add_output(PortRef(String("source_width"), NVT_NUMBER))
+        node.add_output(PortRef(String("source_height"), NVT_NUMBER))
+    if not _contains_ci(class_type, String("source")):
+        node.add_output(PortRef(String("loaded_fps"), NVT_NUMBER))
+        node.add_output(PortRef(String("loaded_frame_count"), NVT_NUMBER))
+        node.add_output(PortRef(String("loaded_duration"), NVT_NUMBER))
+        node.add_output(PortRef(String("loaded_width"), NVT_NUMBER))
+        node.add_output(PortRef(String("loaded_height"), NVT_NUMBER))
+
+
+def _add_vhs_split_outputs(mut node: Node, value_type: Int32, base_name: String):
+    node.add_output(PortRef(base_name + String("_A"), value_type))
+    node.add_output(PortRef(String("A_count"), NVT_NUMBER))
+    node.add_output(PortRef(base_name + String("_B"), value_type))
+    node.add_output(PortRef(String("B_count"), NVT_NUMBER))
+
+
 def _infer_port_type_from_name(name: String) -> Int32:
     if _contains_ci(name, String("mask")):
         return NVT_IMAGE
+    if _contains_ci(name, String("audio")) or _contains_ci(name, String("video_info")) or _contains_ci(name, String("filenames")) or _contains_ci(name, String("meta_batch")) or _contains_ci(name, String("batched")):
+        return NVT_TEXT
     if _contains_ci(name, String("opt_model")):
         return NVT_MODEL
     if _contains_ci(name, String("opt_clip")):
@@ -484,7 +573,7 @@ def _infer_port_type_from_name(name: String) -> Int32:
         return NVT_TEXT
     if _contains_ci(name, String("sigmas")):
         return NVT_NUMBER
-    if _contains_ci(name, String("width")) or _contains_ci(name, String("height")) or _contains_ci(name, String("steps")) or _contains_ci(name, String("cfg")) or _contains_ci(name, String("denoise")) or _contains_ci(name, String("amount")) or _contains_ci(name, String("scale")):
+    if _contains_ci(name, String("frame_count")) or _contains_ci(name, String("frame_rate")) or _contains_ci(name, String("fps")) or _contains_ci(name, String("width")) or _contains_ci(name, String("height")) or _contains_ci(name, String("steps")) or _contains_ci(name, String("cfg")) or _contains_ci(name, String("denoise")) or _contains_ci(name, String("amount")) or _contains_ci(name, String("scale")):
         return NVT_NUMBER
     if _contains_ci(name, String("enable")) or _contains_ci(name, String("enabled")) or _contains_ci(name, String("bool")):
         return NVT_BOOL
@@ -511,12 +600,16 @@ def _parse_comfy_ports(mut node: Node, ports_val: JsonValue, is_input: Bool):
 
 
 def _parse_comfy_widget_values(mut node: Node, widgets_val: JsonValue):
-    if widgets_val.kind != JK_ARRAY:
+    if widgets_val.kind == JK_ARRAY:
+        for i in range(len(widgets_val.arr_val)):
+            var key = String("widget_") + String(i)
+            var fv = _field_from_json(widgets_val.arr_val[i].copy())
+            node.set_field(key, fv)
         return
-    for i in range(len(widgets_val.arr_val)):
-        var key = String("widget_") + String(i)
-        var fv = _field_from_json(widgets_val.arr_val[i].copy())
-        node.set_field(key, fv)
+    if widgets_val.kind == JK_OBJECT:
+        for i in range(len(widgets_val.obj_keys)):
+            var key = widgets_val.obj_keys[i].copy()
+            node.set_field(key, _field_from_json(widgets_val.obj_values[i].copy()))
 
 
 def _parse_comfy_properties(mut node: Node, properties_val: JsonValue):

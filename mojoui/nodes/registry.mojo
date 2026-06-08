@@ -1554,3 +1554,244 @@ def register_comfy_compat_extension_nodes(mut registry: NodeRegistry):
     lanpaint_mask_blend.with_field(String("blend_overlap"), FieldValue.int_(Int64(1)))
     lanpaint_mask_blend.with_size(Vec2(280.0, 135.0))
     registry.register(lanpaint_mask_blend^)
+
+    _register_vhs_nodes(registry)
+
+
+def _register_vhs_nodes(mut registry: NodeRegistry):
+    var combine = NodeTypeDef(String("comfy/VHS_VideoCombine"), String("VHS Video Combine"), String("vhs"))
+    combine.with_input(String("images"), NVT_IMAGE)
+    combine.with_input(String("audio"), NVT_TEXT)
+    combine.with_input(String("meta_batch"), NVT_TEXT)
+    combine.with_input(String("vae"), NVT_VAE)
+    combine.with_output(String("Filenames"), NVT_TEXT)
+    combine.with_field(String("frame_rate"), FieldValue.number(8.0))
+    combine.with_field(String("loop_count"), FieldValue.int_(Int64(0)))
+    combine.with_field(String("filename_prefix"), FieldValue.string(String("AnimateDiff")))
+    combine.with_field(String("format"), FieldValue.string(String("video/mp4")))
+    combine.with_field(String("pingpong"), FieldValue.bool_(False))
+    combine.with_field(String("save_output"), FieldValue.bool_(True))
+    combine.with_size(Vec2(330.0, 255.0))
+    registry.register(combine^)
+
+    _register_vhs_load_video(registry, String("comfy/VHS_LoadVideo"), String("VHS Load Video"), False)
+    _register_vhs_load_video(registry, String("comfy/VHS_LoadVideoPath"), String("VHS Load Video Path"), False)
+    _register_vhs_load_video(registry, String("comfy/VHS_LoadVideoFFmpeg"), String("VHS Load Video FFmpeg"), True)
+    _register_vhs_load_video(registry, String("comfy/VHS_LoadVideoFFmpegPath"), String("VHS Load Video FFmpeg Path"), True)
+
+    var load_image = NodeTypeDef(String("comfy/VHS_LoadImagePath"), String("VHS Load Image Path"), String("vhs"))
+    load_image.with_output(String("IMAGE"), NVT_IMAGE)
+    load_image.with_output(String("mask"), NVT_IMAGE)
+    load_image.with_field(String("image"), FieldValue.string(String("")))
+    load_image.with_field(String("custom_width"), FieldValue.int_(Int64(0)))
+    load_image.with_field(String("custom_height"), FieldValue.int_(Int64(0)))
+    load_image.with_size(Vec2(320.0, 145.0))
+    registry.register(load_image^)
+
+    _register_vhs_load_images(registry, String("comfy/VHS_LoadImages"), String("VHS Load Images"))
+    _register_vhs_load_images(registry, String("comfy/VHS_LoadImagesPath"), String("VHS Load Images Path"))
+
+    var audio = NodeTypeDef(String("comfy/VHS_LoadAudio"), String("VHS Load Audio"), String("vhs/audio"))
+    audio.with_output(String("audio"), NVT_TEXT)
+    audio.with_output(String("duration"), NVT_NUMBER)
+    audio.with_field(String("audio"), FieldValue.string(String("")))
+    audio.with_size(Vec2(290.0, 110.0))
+    registry.register(audio^)
+
+    var audio_upload = NodeTypeDef(String("comfy/VHS_LoadAudioUpload"), String("VHS Load Audio Upload"), String("vhs/audio"))
+    audio_upload.with_output(String("audio"), NVT_TEXT)
+    audio_upload.with_output(String("duration"), NVT_NUMBER)
+    audio_upload.with_field(String("audio"), FieldValue.string(String("")))
+    audio_upload.with_size(Vec2(290.0, 110.0))
+    registry.register(audio_upload^)
+
+    var audio_to_vhs = NodeTypeDef(String("comfy/VHS_AudioToVHSAudio"), String("VHS Audio To Legacy Audio"), String("vhs/audio"))
+    audio_to_vhs.with_input(String("audio"), NVT_TEXT)
+    audio_to_vhs.with_output(String("audio"), NVT_TEXT)
+    audio_to_vhs.with_size(Vec2(300.0, 95.0))
+    registry.register(audio_to_vhs^)
+
+    var vhs_to_audio = NodeTypeDef(String("comfy/VHS_VHSAudioToAudio"), String("VHS Legacy Audio To Audio"), String("vhs/audio"))
+    vhs_to_audio.with_input(String("audio"), NVT_TEXT)
+    vhs_to_audio.with_output(String("audio"), NVT_TEXT)
+    vhs_to_audio.with_size(Vec2(300.0, 95.0))
+    registry.register(vhs_to_audio^)
+
+    var prune = NodeTypeDef(String("comfy/VHS_PruneOutputs"), String("VHS Prune Outputs"), String("vhs"))
+    prune.with_field(String("filenames"), FieldValue.string(String("")))
+    prune.with_size(Vec2(280.0, 90.0))
+    registry.register(prune^)
+
+    var batch = NodeTypeDef(String("comfy/VHS_BatchManager"), String("VHS Meta Batch Manager"), String("vhs"))
+    batch.with_output(String("VHS_BatchManager"), NVT_TEXT)
+    batch.with_field(String("frames_per_batch"), FieldValue.int_(Int64(0)))
+    batch.with_size(Vec2(300.0, 105.0))
+    registry.register(batch^)
+
+    _register_vhs_video_info(registry, String("comfy/VHS_VideoInfo"), String("VHS Video Info"), True, True)
+    _register_vhs_video_info(registry, String("comfy/VHS_VideoInfoSource"), String("VHS Video Info Source"), True, False)
+    _register_vhs_video_info(registry, String("comfy/VHS_VideoInfoLoaded"), String("VHS Video Info Loaded"), False, True)
+
+    var select_filename = NodeTypeDef(String("comfy/VHS_SelectFilename"), String("VHS Select Filename"), String("vhs"))
+    select_filename.with_input(String("filenames"), NVT_TEXT)
+    select_filename.with_output(String("Filename"), NVT_TEXT)
+    select_filename.with_field(String("index"), FieldValue.int_(Int64(-1)))
+    select_filename.with_size(Vec2(280.0, 115.0))
+    registry.register(select_filename^)
+
+    var select_latest = NodeTypeDef(String("comfy/VHS_SelectLatest"), String("VHS Select Latest"), String("vhs"))
+    select_latest.with_output(String("Filename"), NVT_TEXT)
+    select_latest.with_field(String("filename_prefix"), FieldValue.string(String("output/AnimateDiff")))
+    select_latest.with_field(String("filename_postfix"), FieldValue.string(String(".webm")))
+    select_latest.with_size(Vec2(300.0, 135.0))
+    registry.register(select_latest^)
+
+    _register_vhs_batched(registry, String("comfy/VHS_VAEEncodeBatched"), String("VHS VAE Encode Batched"), True)
+    _register_vhs_batched(registry, String("comfy/VHS_VAEDecodeBatched"), String("VHS VAE Decode Batched"), False)
+
+    _register_vhs_sequence_family(registry, String("Latents"), String("LATENT"), NVT_LATENT, String("latents"), String("vhs/latent"))
+    _register_vhs_sequence_family(registry, String("Images"), String("IMAGE"), NVT_IMAGE, String("images"), String("vhs/image"))
+    _register_vhs_sequence_family(registry, String("Masks"), String("MASK"), NVT_IMAGE, String("masks"), String("vhs/mask"))
+
+    var unbatch = NodeTypeDef(String("comfy/VHS_Unbatch"), String("VHS Unbatch"), String("vhs"))
+    unbatch.with_input(String("batched"), NVT_TEXT)
+    unbatch.with_output(String("unbatched"), NVT_TEXT)
+    unbatch.with_size(Vec2(260.0, 95.0))
+    registry.register(unbatch^)
+
+
+def _register_vhs_load_video(mut registry: NodeRegistry, type_id: String, display: String, with_mask: Bool):
+    var td = NodeTypeDef(type_id, display, String("vhs"))
+    td.with_output(String("IMAGE"), NVT_IMAGE)
+    if with_mask:
+        td.with_output(String("mask"), NVT_IMAGE)
+    else:
+        td.with_output(String("frame_count"), NVT_NUMBER)
+    td.with_output(String("audio"), NVT_TEXT)
+    td.with_output(String("video_info"), NVT_TEXT)
+    td.with_field(String("video"), FieldValue.string(String("")))
+    td.with_field(String("force_rate"), FieldValue.number(0.0))
+    td.with_field(String("custom_width"), FieldValue.int_(Int64(0)))
+    td.with_field(String("custom_height"), FieldValue.int_(Int64(0)))
+    td.with_field(String("frame_load_cap"), FieldValue.int_(Int64(0)))
+    td.with_field(String("skip_first_frames"), FieldValue.int_(Int64(0)))
+    td.with_field(String("select_every_nth"), FieldValue.int_(Int64(1)))
+    td.with_size(Vec2(330.0, 360.0))
+    registry.register(td^)
+
+
+def _register_vhs_load_images(mut registry: NodeRegistry, type_id: String, display: String):
+    var td = NodeTypeDef(type_id, display, String("vhs"))
+    td.with_output(String("IMAGE"), NVT_IMAGE)
+    td.with_output(String("MASK"), NVT_IMAGE)
+    td.with_output(String("frame_count"), NVT_NUMBER)
+    td.with_field(String("directory"), FieldValue.string(String("")))
+    td.with_field(String("image_load_cap"), FieldValue.int_(Int64(0)))
+    td.with_field(String("skip_first_images"), FieldValue.int_(Int64(0)))
+    td.with_field(String("select_every_nth"), FieldValue.int_(Int64(1)))
+    td.with_size(Vec2(330.0, 195.0))
+    registry.register(td^)
+
+
+def _register_vhs_video_info(mut registry: NodeRegistry, type_id: String, display: String, source: Bool, loaded: Bool):
+    var td = NodeTypeDef(type_id, display, String("vhs"))
+    td.with_input(String("video_info"), NVT_TEXT)
+    if source:
+        td.with_output(String("source_fps"), NVT_NUMBER)
+        td.with_output(String("source_frame_count"), NVT_NUMBER)
+        td.with_output(String("source_duration"), NVT_NUMBER)
+        td.with_output(String("source_width"), NVT_NUMBER)
+        td.with_output(String("source_height"), NVT_NUMBER)
+    if loaded:
+        td.with_output(String("loaded_fps"), NVT_NUMBER)
+        td.with_output(String("loaded_frame_count"), NVT_NUMBER)
+        td.with_output(String("loaded_duration"), NVT_NUMBER)
+        td.with_output(String("loaded_width"), NVT_NUMBER)
+        td.with_output(String("loaded_height"), NVT_NUMBER)
+    td.with_size(Vec2(330.0, 205.0))
+    registry.register(td^)
+
+
+def _register_vhs_batched(mut registry: NodeRegistry, type_id: String, display: String, encode: Bool):
+    var td = NodeTypeDef(type_id, display, String("vhs/batched"))
+    if encode:
+        td.with_input(String("pixels"), NVT_IMAGE)
+        td.with_input(String("vae"), NVT_VAE)
+        td.with_output(String("LATENT"), NVT_LATENT)
+    else:
+        td.with_input(String("samples"), NVT_LATENT)
+        td.with_input(String("vae"), NVT_VAE)
+        td.with_output(String("IMAGE"), NVT_IMAGE)
+    td.with_field(String("per_batch"), FieldValue.int_(Int64(16)))
+    td.with_size(Vec2(310.0, 130.0))
+    registry.register(td^)
+
+
+def _register_vhs_sequence_family(
+    mut registry: NodeRegistry,
+    plural: String,
+    output_name: String,
+    value_type: Int32,
+    input_name: String,
+    category: String,
+):
+    var split = NodeTypeDef(String("comfy/VHS_Split") + plural, String("VHS Split ") + plural, category)
+    split.with_input(input_name, value_type)
+    split.with_output(output_name + String("_A"), value_type)
+    split.with_output(String("A_count"), NVT_NUMBER)
+    split.with_output(output_name + String("_B"), value_type)
+    split.with_output(String("B_count"), NVT_NUMBER)
+    split.with_field(String("split_index"), FieldValue.int_(Int64(0)))
+    split.with_size(Vec2(315.0, 150.0))
+    registry.register(split^)
+
+    var merge = NodeTypeDef(String("comfy/VHS_Merge") + plural, String("VHS Merge ") + plural, category)
+    merge.with_input(input_name + String("_A"), value_type)
+    merge.with_input(input_name + String("_B"), value_type)
+    merge.with_output(output_name, value_type)
+    merge.with_output(String("count"), NVT_NUMBER)
+    merge.with_field(String("merge_strategy"), FieldValue.string(String("match A")))
+    merge.with_field(String("scale_method"), FieldValue.string(String("nearest-exact")))
+    merge.with_field(String("crop"), FieldValue.string(String("disabled")))
+    merge.with_size(Vec2(350.0, 180.0))
+    registry.register(merge^)
+
+    var count = NodeTypeDef(String("comfy/VHS_Get") + _singular(plural) + String("Count"), String("VHS Get ") + _singular(plural) + String(" Count"), category)
+    count.with_input(input_name, value_type)
+    count.with_output(String("count"), NVT_NUMBER)
+    count.with_size(Vec2(280.0, 95.0))
+    registry.register(count^)
+
+    var duplicate = NodeTypeDef(String("comfy/VHS_Duplicate") + plural, String("VHS Duplicate ") + plural, category)
+    duplicate.with_input(input_name, value_type)
+    duplicate.with_output(output_name, value_type)
+    duplicate.with_output(String("count"), NVT_NUMBER)
+    duplicate.with_field(String("multiply_by"), FieldValue.int_(Int64(2)))
+    duplicate.with_size(Vec2(315.0, 125.0))
+    registry.register(duplicate^)
+
+    var nth = NodeTypeDef(String("comfy/VHS_SelectEveryNth") + _singular(plural), String("VHS Select Every Nth ") + _singular(plural), category)
+    nth.with_input(input_name, value_type)
+    nth.with_output(output_name, value_type)
+    nth.with_output(String("count"), NVT_NUMBER)
+    nth.with_field(String("select_every_nth"), FieldValue.int_(Int64(1)))
+    nth.with_size(Vec2(330.0, 125.0))
+    registry.register(nth^)
+
+    var select = NodeTypeDef(String("comfy/VHS_Select") + plural, String("VHS Select ") + plural, category)
+    select.with_input(input_name, value_type)
+    select.with_output(output_name, value_type)
+    select.with_output(String("count"), NVT_NUMBER)
+    select.with_field(String("indexes"), FieldValue.string(String("")))
+    select.with_size(Vec2(330.0, 125.0))
+    registry.register(select^)
+
+
+def _singular(plural: String) -> String:
+    if plural == String("Latents"):
+        return String("Latent")
+    if plural == String("Images"):
+        return String("Image")
+    if plural == String("Masks"):
+        return String("Mask")
+    return plural

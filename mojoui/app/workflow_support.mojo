@@ -59,6 +59,8 @@ def incoming_value(
             return result.find_value(graph.edges[i].from_node, graph.edges[i].from_port)
     if wanted == String("image") or wanted == String("images") or wanted == String("pixels"):
         return first_incoming_kind(graph, result, node_id, WV_IMAGE)
+    if wanted == String("mask") or wanted == String("masks"):
+        return first_incoming_kind(graph, result, node_id, WV_IMAGE)
     if wanted == String("video") or wanted == String("videos"):
         return first_incoming_kind(graph, result, node_id, WV_VIDEO)
     if wanted == String("bboxes") or wanted == String("bbox"):
@@ -69,7 +71,7 @@ def incoming_value(
         return first_incoming_kind(graph, result, node_id, WV_CLIP)
     if wanted == String("vae"):
         return first_incoming_kind(graph, result, node_id, WV_VAE)
-    if wanted == String("latent") or wanted == String("latent_image") or wanted == String("samples"):
+    if wanted == String("latent") or wanted == String("latents") or wanted == String("latent_image") or wanted == String("samples"):
         return first_incoming_kind(graph, result, node_id, WV_LATENT)
     if (
         wanted == String("cfg")
@@ -87,7 +89,18 @@ def incoming_value(
         or wanted == String("conditioning")
     ):
         return first_incoming_kind(graph, result, node_id, WV_CONDITIONING)
-    if wanted == String("prompt") or wanted == String("caption_json") or wanted == String("sampler") or wanted == String("sampler_name") or wanted == String("scheduler"):
+    if (
+        wanted == String("prompt")
+        or wanted == String("caption_json")
+        or wanted == String("sampler")
+        or wanted == String("sampler_name")
+        or wanted == String("scheduler")
+        or wanted == String("audio")
+        or wanted == String("video_info")
+        or wanted == String("filenames")
+        or wanted == String("meta_batch")
+        or wanted == String("batched")
+    ):
         return first_incoming_kind(graph, result, node_id, WV_TEXT)
     if wanted == String("import_json"):
         return first_incoming_kind(graph, result, node_id, WV_TEXT)

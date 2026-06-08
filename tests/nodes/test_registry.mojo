@@ -64,8 +64,8 @@ def test_register_builtins_count() raises:
     """The `register_builtins` helper registers ComfyUI-shaped core/media/Ideogram typedefs."""
     var reg = NodeRegistry()
     register_builtins(reg)
-    if reg.size() != 87:
-        raise Error("expected 87 builtins, got " + String(reg.size()))
+    if reg.size() != 127:
+        raise Error("expected 127 builtins, got " + String(reg.size()))
     if not reg.is_registered(String("core/load_checkpoint")):
         raise Error("missing core/load_checkpoint")
     if not reg.is_registered(String("core/encode_prompt")):
@@ -136,6 +136,16 @@ def test_register_builtins_count() raises:
         raise Error("missing LanPaint SamplerCustomAdvanced import typedef")
     if not reg.is_registered(String("comfy/LanPaint_MaskBlend")):
         raise Error("missing LanPaint MaskBlend import typedef")
+    if not reg.is_registered(String("comfy/VHS_LoadVideo")):
+        raise Error("missing VHS LoadVideo import typedef")
+    if not reg.is_registered(String("comfy/VHS_LoadVideoPath")):
+        raise Error("missing VHS LoadVideoPath import typedef")
+    if not reg.is_registered(String("comfy/VHS_VideoCombine")):
+        raise Error("missing VHS VideoCombine import typedef")
+    if not reg.is_registered(String("comfy/VHS_VideoInfo")):
+        raise Error("missing VHS VideoInfo import typedef")
+    if not reg.is_registered(String("comfy/VHS_SelectEveryNthImage")):
+        raise Error("missing VHS SelectEveryNthImage import typedef")
     print("  PASS test_register_builtins_count")
 
 
@@ -144,8 +154,8 @@ def test_by_category() raises:
     var reg = NodeRegistry()
     register_builtins(reg)
     var groups = reg.by_category()
-    if len(groups) != 25:
-        raise Error("expected 25 categories, got " + String(len(groups)))
+    if len(groups) != 31:
+        raise Error("expected 31 categories, got " + String(len(groups)))
     if not (String("core") in groups):
         raise Error("missing 'core' category")
     if not (String("sampler") in groups):
@@ -178,6 +188,18 @@ def test_by_category() raises:
         raise Error("missing 'lanpaint/sampling' category")
     if not (String("lanpaint/image") in groups):
         raise Error("missing 'lanpaint/image' category")
+    if not (String("vhs") in groups):
+        raise Error("missing 'vhs' category")
+    if not (String("vhs/audio") in groups):
+        raise Error("missing 'vhs/audio' category")
+    if not (String("vhs/batched") in groups):
+        raise Error("missing 'vhs/batched' category")
+    if not (String("vhs/latent") in groups):
+        raise Error("missing 'vhs/latent' category")
+    if not (String("vhs/image") in groups):
+        raise Error("missing 'vhs/image' category")
+    if not (String("vhs/mask") in groups):
+        raise Error("missing 'vhs/mask' category")
     if not (String("kj/constants") in groups):
         raise Error("missing 'kj/constants' category")
     if not (String("kj/text") in groups):
@@ -226,6 +248,18 @@ def test_by_category() raises:
         raise Error("lanpaint/sampling category should have 4 typedefs")
     if len(groups[String("lanpaint/image")]) != 1:
         raise Error("lanpaint/image category should have 1 typedef")
+    if len(groups[String("vhs")]) != 16:
+        raise Error("vhs category should have 16 typedefs")
+    if len(groups[String("vhs/audio")]) != 4:
+        raise Error("vhs/audio category should have 4 typedefs")
+    if len(groups[String("vhs/batched")]) != 2:
+        raise Error("vhs/batched category should have 2 typedefs")
+    if len(groups[String("vhs/latent")]) != 6:
+        raise Error("vhs/latent category should have 6 typedefs")
+    if len(groups[String("vhs/image")]) != 6:
+        raise Error("vhs/image category should have 6 typedefs")
+    if len(groups[String("vhs/mask")]) != 6:
+        raise Error("vhs/mask category should have 6 typedefs")
     print("  PASS test_by_category")
 
 
