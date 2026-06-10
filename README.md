@@ -154,6 +154,29 @@ LD_LIBRARY_PATH=. /tmp/dual gui                          # GUI mode (needs a dis
 - `examples/dpg_callbacks_demo.mojo` — handler callbacks per widget tag.
 - `examples/dpg_demo.mojo` — the events-poll variant (`consume_event`/`take_events`).
 
+## Audio playback
+
+The C floor includes a small **ALSA** backend (`c_floor/mojoui_audio.c`, linked
+`-lasound`) exposed via `mojoui.audio.playback`: open the default device, write
+interleaved **float32** samples, drain, shutdown. Pairs with MOJO-libs
+[`audio`](https://github.com/CodeAlexx/MOJO-libs) (`read_wav` / generated
+samples) to play model-generated or reference audio (e.g. LTX2 / NAVA output).
+
+```mojo
+from mojoui.audio.playback import play_samples
+from audio.wav import read_wav            # MOJO-libs (build with -I /path/to/MOJO-libs)
+
+var buf = read_wav(String("clip.wav"))
+var rc = play_samples(buf.samples, buf.rate, buf.channels)   # blocking; 0 = ok, <0 = ALSA error
+```
+
+`audio_write` is **blocking** (returns once samples are queued), so `play_samples`
+plays a whole buffer synchronously; chunked UI-thread / A-V-synced playback is a
+later refinement. See `examples/audio_play_demo.mojo` (no arg = 440 Hz tone; a
+path = play a WAV). **Verified**: builds + links + runs with `rc=0` (init/write/
+drain/shutdown, no crash) on a box with an ALSA device — audible output is
+confirmed on your speakers, not headlessly.
+
 ## License
 
 MIT - see [LICENSE](LICENSE).

@@ -180,6 +180,17 @@ int      mojoui_draw_text(uint32_t font_id, int size_pt, const char* text, int t
                           int x, int y, int r, int g, int b, int a);
 
 
+/* ============================================================
+ * Section 4 — Audio playback (ALSA, mojoui_audio.c)
+ * ============================================================ */
+
+int  mojoui_audio_init(int rate, int channels);              /* 0 ok, <0 ALSA error */
+int  mojoui_audio_is_open(void);
+int  mojoui_audio_write(const float* samples, int nframes);  /* interleaved f32; blocking */
+void mojoui_audio_drain(void);                               /* block until queued audio done */
+void mojoui_audio_shutdown(void);
+
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif

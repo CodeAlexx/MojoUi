@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -fPIC -O2 -std=c11 -D_POSIX_C_SOURCE=200112L
 # `-I.` puts c_floor/ itself on the include path so each TU can pick up
 # mojoui_shim.h (the consolidated public C ABI consumed by Mojo FFI).
 INC = -I. -Ivendored/sokol -Ivendored/stb
-LDFLAGS_LINUX = -lGL -lX11 -lEGL -lXi -lXcursor -ldl -lm -lpthread
+LDFLAGS_LINUX = -lGL -lX11 -lEGL -lXi -lXcursor -ldl -lm -lpthread -lasound
 GDK_PIXBUF_CFLAGS := $(shell pkg-config --cflags gdk-pixbuf-2.0 2>/dev/null)
 GDK_PIXBUF_LIBS := $(shell pkg-config --libs gdk-pixbuf-2.0 2>/dev/null)
 LDFLAGS_LINUX += $(GDK_PIXBUF_LIBS)
@@ -34,6 +34,9 @@ endif
 ifneq ($(wildcard mojoui_video.c),)
 OBJS += $(OBJ_DIR)/mojoui_video.o
 endif
+ifneq ($(wildcard mojoui_audio.c),)
+OBJS += $(OBJ_DIR)/mojoui_audio.o
+endif
 ifneq ($(wildcard mojoui_system.c),)
 OBJS += $(OBJ_DIR)/mojoui_system.o
 endif
@@ -63,6 +66,9 @@ $(OBJ_DIR)/mojoui_video.o: mojoui_video.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) $(INC) -c $< -o $@
 
 $(OBJ_DIR)/mojoui_system.o: mojoui_system.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) $(INC) -c $< -o $@
+
+$(OBJ_DIR)/mojoui_audio.o: mojoui_audio.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) $(INC) -c $< -o $@
 
 $(LIB): $(OBJS)
