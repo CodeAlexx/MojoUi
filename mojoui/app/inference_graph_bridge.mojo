@@ -30,6 +30,14 @@ from mojoui.app.inference_model import (
     QueueJob,
     _color_seed_for,
 )
+from mojoui.app.daemon_client import (
+    DaemonJobInfo,
+    daemon_cancel,
+    daemon_generate,
+    daemon_health,
+    daemon_jobs,
+)
+from mojoui.app.gen_history import absolutize_output_path
 from mojoui.app.workflow_executor import execute_workflow_with_device
 from mojoui.app.workflow_types import WorkflowDeviceConfig
 
@@ -63,6 +71,21 @@ struct GraphUiRuntime(Movable):
     var last_prompt_json: String
     var last_log_path: String
 
+    # ── daemon bridge state (DAEMON_BRIDGE_SPEC.md / P11+P12) ──
+    var daemon_ok: Bool                       # last health verdict
+    var daemon_backend: String                # "stub" | "zimage" | ...
+    var daemon_resident: String               # resident checkpoint ("" = none)
+    var daemon_submitted: List[String]        # this UI's in-flight job ids
+    var daemon_jobs_cache: List[DaemonJobInfo]  # last /v1/jobs (queue rail)
+    var daemon_done_events: List[DaemonJobInfo] # terminal jobs, drained by screen
+    var daemon_poll_tick: Int
+    var daemon_health_tick: Int
+    var daemon_fail_streak: Int               # consecutive failed polls
+    var last_submit_json: String              # G2f audit: exact POSTed genparams
+    var submit_width: Int                     # dims of the in-flight daemon job
+    var submit_height: Int
+    var route_label: String                   # "daemon" | "cli" | reason text
+
     def __init__(out self):
         self.result_path = String("")
         self.result_pixels = List[UInt8]()
@@ -76,6 +99,19 @@ struct GraphUiRuntime(Movable):
         self.last_command = String("")
         self.last_prompt_json = String("")
         self.last_log_path = String("")
+        self.daemon_ok = False
+        self.daemon_backend = String("")
+        self.daemon_resident = String("")
+        self.daemon_submitted = List[String]()
+        self.daemon_jobs_cache = List[DaemonJobInfo]()
+        self.daemon_done_events = List[DaemonJobInfo]()
+        self.daemon_poll_tick = 0
+        self.daemon_health_tick = 0
+        self.daemon_fail_streak = 0
+        self.last_submit_json = String("")
+        self.submit_width = 0
+        self.submit_height = 0
+        self.route_label = String("")
 
 
 struct GraphBackendRun(Movable):
@@ -446,9 +482,13 @@ def _sample_prompt_json(
     seed: Int64,
     caps_pos: String,
     caps_neg: String,
+    precache: Bool = True,
 ) -> String:
     var p = _json_escape(prompt)
     var n = _json_escape(negative)
+    var precache_str = String("true")
+    if not precache:
+        precache_str = String("false")
     return (
         String("{\n")
         + String("  \"schema\": \"serenity.sample_prompts.v1\",\n")
@@ -456,7 +496,7 @@ def _sample_prompt_json(
         + String("    \"sample_every\": 1,\n")
         + String("    \"sample_at_start\": true,\n")
         + String("    \"save_before_sample\": false,\n")
-        + String("    \"precache_required\": true,\n")
+        + String("    \"precache_required\": ") + precache_str + String(",\n")
         + String("    \"enforce_min_image_size\": false,\n")
         + String("    \"width\": ") + String(width) + String(",\n")
         + String("    \"height\": ") + String(height) + String(",\n")
@@ -588,28 +628,269 @@ def _run_klein9b_system(
     return GraphBackendRun(True, out_png, prompt_json, log_path, cmd, width, height, String(""))
 
 
+# ── Multi-model backend registry ───────────────────────────────────────────
+# Generalises the Klein-9B shell-out to every model the SerenityUI dropdown
+# exposes. Each entry names the Mojo CLI source to build + the invocation
+# contract. New image models only need (1) a `<slug>_sample_cli.mojo` adapter
+# that reads a `serenity.sample_prompts.v1` JSON and writes a PNG, mirroring
+# `klein_sample_cli`, and (2) one entry in `_resolve_model_spec` below.
+#
+# arg_style:
+#   0 = sample_cli  ->  BIN <config.json> <lora|-> <req.json> <id> <out.png>
+#   1 = zimage      ->  BIN <lora|base> <out.png> <req.json> <id>
+
+comptime MODEL_OUT_DIR = KLEIN_OUT_DIR
+comptime MODEL_REQ_DIR = KLEIN_REQ_DIR
+comptime MODEL_CAP_DIR = KLEIN_CAP_DIR
+comptime MODEL_BIN_DIR = KLEIN_BIN_DIR
+comptime SERENITY_ROOT = KLEIN_ROOT
+comptime PIXI_BIN = "/home/alex/.pixi/bin/pixi"
+
+
+struct ModelBackendSpec(Movable):
+    var supported: Bool
+    var slug: String
+    var arg_style: Int
+    var src: String
+    var bin: String
+    var config: String
+    var needs_precache: Bool
+    var precache_src: String
+    var precache_bin: String
+    var unsupported_msg: String
+
+    def __init__(
+        out self,
+        supported: Bool,
+        slug: String,
+        arg_style: Int,
+        src: String,
+        config: String,
+        needs_precache: Bool = False,
+        precache_src: String = String(""),
+        unsupported_msg: String = String(""),
+    ):
+        self.supported = supported
+        self.slug = slug.copy()
+        self.arg_style = arg_style
+        self.src = src.copy()
+        self.bin = String(MODEL_BIN_DIR) + String("/") + slug + String("_serenity_cli")
+        self.config = config.copy()
+        self.needs_precache = needs_precache
+        self.precache_src = precache_src.copy()
+        self.precache_bin = String(MODEL_BIN_DIR) + String("/") + slug + String("_precache")
+        self.unsupported_msg = unsupported_msg.copy()
+
+    @staticmethod
+    def unsupported(slug: String, msg: String) -> ModelBackendSpec:
+        return ModelBackendSpec(False, slug, 0, String(""), String(""), False, String(""), msg)
+
+
+def _resolve_model_spec(name: String) raises -> ModelBackendSpec:
+    """Map a SerenityUI dropdown model name to its Mojo inference backend."""
+    if name == String("Klein 9B"):
+        return ModelBackendSpec(
+            True, String("klein9b"), 0,
+            String("serenitymojo/sampling/klein_sample_cli.mojo"),
+            String("serenitymojo/configs/klein9b.json"),
+            True, String("serenitymojo/pipeline/klein9b_precache_sample_prompts.mojo"),
+        )
+    if name == String("Klein 4B"):
+        return ModelBackendSpec(
+            True, String("klein4b"), 0,
+            String("serenitymojo/sampling/klein_sample_cli.mojo"),
+            String("serenitymojo/configs/klein4b.json"),
+            True, String("serenitymojo/pipeline/klein9b_precache_sample_prompts.mojo"),
+        )
+    if name == String("Z-Image (base)"):
+        return ModelBackendSpec(
+            True, String("zimage_base"), 1,
+            String("serenitymojo/pipeline/zimage_generate.mojo"),
+            String("serenitymojo/configs/zimage.json"),
+        )
+    if name == String("Z-Image (turbo)"):
+        return ModelBackendSpec(
+            True, String("zimage_turbo"), 1,
+            String("serenitymojo/pipeline/zimage_generate.mojo"),
+            String("serenitymojo/configs/zimage.json"),
+        )
+    if name == String("Qwen-Image"):
+        return ModelBackendSpec(
+            True, String("qwenimage"), 0,
+            String("serenitymojo/pipeline/qwenimage_sample_cli.mojo"),
+            String("serenitymojo/configs/qwenimage.json"),
+        )
+    if name == String("Chroma"):
+        return ModelBackendSpec(
+            True, String("chroma"), 0,
+            String("serenitymojo/pipeline/chroma_sample_cli.mojo"),
+            String("serenitymojo/configs/chroma.json"),
+        )
+    if name == String("SD 3.5"):
+        return ModelBackendSpec(
+            True, String("sd35"), 0,
+            String("serenitymojo/pipeline/sd3_sample_cli.mojo"),
+            String("serenitymojo/configs/sd35.json"),
+        )
+    if name == String("SDXL"):
+        return ModelBackendSpec(
+            True, String("sdxl"), 0,
+            String("serenitymojo/pipeline/sdxl_sample_cli.mojo"),
+            String("serenitymojo/configs/sdxl.json"),
+        )
+    if name == String("ERNIE"):
+        return ModelBackendSpec(
+            True, String("ernie"), 0,
+            String("serenitymojo/pipeline/ernie_sample_cli.mojo"),
+            String("serenitymojo/configs/ernie_image.json"),
+            True, String("serenitymojo/pipeline/ernie_precache_sample_prompts.mojo"),
+        )
+    if name == String("FLUX Dev"):
+        return ModelBackendSpec(
+            True, String("flux"), 0,
+            String("serenitymojo/pipeline/flux_sample_cli.mojo"),
+            String("serenitymojo/configs/flux.json"),
+        )
+    if name == String("Anima"):
+        return ModelBackendSpec(
+            True, String("anima"), 0,
+            String("serenitymojo/pipeline/anima_serenity_cli.mojo"),
+            String("serenitymojo/configs/anima.json"),
+        )
+    if name == String("SD 1.5"):
+        return ModelBackendSpec.unsupported(
+            String("sd15"),
+            String("SD 1.5 has no Mojo generate pipeline in serenitymojo yet"
+                   " (only VAE/contract smokes); not wired for inference."),
+        )
+    return ModelBackendSpec.unsupported(
+        String("unknown"),
+        String("No serenitymojo backend registered for model '") + name + String("'"),
+    )
+
+
+def _build_clause(bin: String, src: String) -> String:
+    """Shell clause: build `bin` from `src` if not already present."""
+    return (
+        String("(test -x ")
+        + bin
+        + String(" || ")
+        + String(PIXI_BIN)
+        + String(" run mojo build -I . -Xlinker -lm -Xlinker -lcuda ")
+        + src
+        + String(" -o ")
+        + bin
+        + String(")")
+    )
+
+
+def _run_model_system(
+    spec: ModelBackendSpec,
+    display: QueueJob,
+    negative: String,
+    cfg: Float32,
+    width: Int,
+    height: Int,
+) raises -> GraphBackendRun:
+    """Generic model runner: write the request JSON, build the model CLI on
+    demand, run it, and confirm it produced a PNG. Mirrors the proven
+    Klein-9B flow for every registered model."""
+    _ = _sys_system(
+        String("mkdir -p ")
+        + String(MODEL_OUT_DIR) + String(" ")
+        + String(MODEL_REQ_DIR) + String(" ")
+        + String(MODEL_CAP_DIR) + String(" ")
+        + String(MODEL_BIN_DIR)
+    )
+    var stem = String("serenityui_") + spec.slug + String("_") + String(display.id)
+    var req_json = String(MODEL_REQ_DIR) + String("/") + stem + String(".json")
+    var caps_pos = String(MODEL_CAP_DIR) + String("/") + stem + String("_pos.bin")
+    var caps_neg = String(MODEL_CAP_DIR) + String("/") + stem + String("_neg.bin")
+    var out_png = String(MODEL_OUT_DIR) + String("/") + stem + String(".png")
+    var log_path = String(MODEL_OUT_DIR) + String("/") + stem + String(".log")
+    var json = _sample_prompt_json(
+        display.prompt, negative, width, height,
+        display.steps, cfg, display.seed, caps_pos, caps_neg,
+        spec.needs_precache,
+    )
+    _write_text_file(req_json, json)
+
+    # Per-model invocation contract.
+    var invoke: String
+    if spec.arg_style == 1:
+        # zimage_generate <lora|base> <out.png> <req.json> <id>
+        invoke = spec.bin + String(" base ") + out_png + String(" ") + req_json + String(" serenityui")
+    else:
+        # sample_cli <config.json> <lora|-> <req.json> <id> <out.png>
+        invoke = (
+            spec.bin + String(" ") + spec.config + String(" - ")
+            + req_json + String(" serenityui ") + out_png
+        )
+
+    var build_steps = String("")
+    var run_steps = String("")
+    if spec.needs_precache:
+        build_steps += _build_clause(spec.precache_bin, spec.precache_src) + String(" && ")
+        run_steps += spec.precache_bin + String(" ") + req_json + String(" && ")
+    build_steps += _build_clause(spec.bin, spec.src)
+
+    var cmd = (
+        String("cd ") + String(SERENITY_ROOT) + String(" && (")
+        + build_steps + String(" && ") + run_steps + invoke
+        + String(") > ") + log_path + String(" 2>&1")
+    )
+    var rc = _sys_system(cmd)
+    if rc != 0:
+        return GraphBackendRun(
+            False, out_png, req_json, log_path, cmd, width, height,
+            spec.slug + String(" command failed with status ") + String(rc)
+            + String("; see ") + log_path,
+        )
+    if not _path_exists(out_png):
+        return GraphBackendRun(
+            False, out_png, req_json, log_path, cmd, width, height,
+            spec.slug + String(" finished but did not write ") + out_png
+            + String("; see ") + log_path,
+        )
+    return GraphBackendRun(True, out_png, req_json, log_path, cmd, width, height, String(""))
+
+
 def run_klein9b_graph_once(state: InferenceState, display: QueueJob) raises -> GraphBackendRun:
+    """Dispatch the current UI model selection to its serenitymojo backend.
+
+    Name kept for source compatibility with existing callers; it now routes by
+    the selected model rather than always running Klein 9B."""
+    var model_name = String("Klein 9B")
+    if state.cli_model_override.byte_length() > 0:
+        # the gen screen mapped the daemon-scanned selection to a CLI backend
+        model_name = state.cli_model_override.copy()
+    else:
+        var mi = Int(state.model_index)
+        if mi >= 0 and mi < len(state.model_options):
+            model_name = state.model_options[mi].copy()
+    var spec = _resolve_model_spec(model_name)
+    if not spec.supported:
+        return GraphBackendRun.failure(spec.unsupported_msg)
+
     var size = _square_klein_size(display.width, display.height)
     var out_png = (
-        String(KLEIN_OUT_DIR)
-        + String("/serenityui_klein9b_")
-        + String(display.id)
-        + String(".png")
+        String(MODEL_OUT_DIR) + String("/serenityui_") + spec.slug
+        + String("_") + String(display.id) + String(".png")
     )
-    var graph = build_klein9b_inference_graph(
-        state,
-        display,
-        out_png,
-        Int32(size),
-        Int32(size),
-    )
+    # Build + dry-validate the Comfy-shaped graph (executor sanity) before the
+    # backend launch. Cosmetic for non-Klein models but keeps the UI contract.
+    var graph = build_klein9b_inference_graph(state, display, out_png, Int32(size), Int32(size))
     var canvas = CanvasState()
     var device = WorkflowDeviceConfig()
     device.dry_run = False
     var exec_result = execute_workflow_with_device(graph, canvas, device)
     if not exec_result.success:
         return GraphBackendRun.failure(String("workflow executor failed before backend launch"))
-    return _run_klein9b_system(display, state.negative, state.cfg, size, size)
+
+    # Klein keeps its proven dedicated runner; everything else uses the generic.
+    if spec.slug == String("klein9b"):
+        return _run_klein9b_system(display, state.negative, state.cfg, size, size)
+    return _run_model_system(spec, display, state.negative, state.cfg, size, size)
 
 
 def dry_run_klein9b_graph(state: InferenceState) raises -> Bool:
@@ -708,9 +989,157 @@ def graph_cancel_all(mut state: InferenceState, mut rt: GraphUiRuntime):
     state.perf.gpu_util_pct = 0.0
 
 
+# ── daemon bridge (DAEMON_BRIDGE_SPEC.md): submit / poll / cancel ───────────
+comptime DAEMON_POLL_ACTIVE_FRAMES = 6    # ~10 Hz progress poll while a job runs
+comptime DAEMON_POLL_IDLE_FRAMES = 60     # queue-rail freshness when idle
+comptime DAEMON_HEALTH_FRAMES = 240       # health re-probe cadence when down
+
+
+def daemon_refresh_health(mut rt: GraphUiRuntime):
+    """GET /v1/health -> rt.daemon_ok/backend/resident. Never raises."""
+    var h = daemon_health()
+    rt.daemon_ok = h.ok
+    rt.daemon_backend = h.backend.copy()
+    rt.daemon_resident = h.resident.copy()
+
+
+def daemon_submit_params(
+    mut state: InferenceState, mut rt: GraphUiRuntime,
+    genparams_json: String, width: Int, height: Int, steps: Int,
+) -> Bool:
+    """POST one canonical genparams body to /v1/generate. On success arms the
+    nonblocking progress poll; on failure flags the daemon unhealthy so the
+    caller falls back to the CLI path."""
+    try:
+        var job_id = daemon_generate(genparams_json)
+        rt.daemon_submitted.append(job_id.copy())
+        rt.last_submit_json = genparams_json.copy()
+        rt.submit_width = width
+        rt.submit_height = height
+        rt.route_label = String("daemon")
+        rt.last_status = String("daemon ") + job_id
+        rt.last_error = String("")
+        state.generating = True
+        state.has_running = True
+        state.current_step = 0
+        state.total_steps = Int32(steps)
+        state.result_ready = False
+        print("[daemon-bridge] submitted", job_id, "->", genparams_json)
+        return True
+    except e:
+        rt.daemon_ok = False
+        rt.last_error = String("daemon submit failed: ") + String(e)
+        print("[daemon-bridge]", rt.last_error)
+        return False
+
+
+def daemon_cancel_submitted(mut state: InferenceState, mut rt: GraphUiRuntime):
+    """POST /v1/cancel/<id> for every in-flight job this UI submitted. The
+    poll tick finalizes states (cancelled jobs surface as done_events)."""
+    for i in range(len(rt.daemon_submitted)):
+        try:
+            _ = daemon_cancel(rt.daemon_submitted[i])
+            print("[daemon-bridge] cancel requested:", rt.daemon_submitted[i])
+        except e:
+            print("[daemon-bridge] cancel failed:", String(e))
+    rt.last_status = String("cancel requested")
+
+
+def _daemon_find_job(jobs: List[DaemonJobInfo], id: String) -> Int:
+    for i in range(len(jobs)):
+        if jobs[i].id == id:
+            return i
+    return -1
+
+
+def _daemon_apply_poll(
+    mut state: InferenceState, mut rt: GraphUiRuntime, jobs: List[DaemonJobInfo]
+):
+    """Fold one /v1/jobs snapshot into UI state: progress for the tracked
+    jobs, terminal jobs -> done_events (+ preview result on done)."""
+    rt.daemon_jobs_cache = jobs.copy()
+    var still = List[String]()
+    var finished_any = False
+    for i in range(len(rt.daemon_submitted)):
+        var idx = _daemon_find_job(jobs, rt.daemon_submitted[i])
+        if idx < 0:
+            still.append(rt.daemon_submitted[i].copy())  # submit/poll race
+            continue
+        if jobs[idx].is_terminal():
+            finished_any = True
+            rt.daemon_done_events.append(jobs[idx].copy())
+            if jobs[idx].state == "done":
+                rt.result_path = absolutize_output_path(jobs[idx].output_path)
+                rt.result_pixels = List[UInt8]()
+                rt.result_width = rt.submit_width
+                rt.result_height = rt.submit_height
+                rt.result_job_id += 1
+                rt.last_status = jobs[idx].id + String(" done")
+                state.result_ready = True
+            elif jobs[idx].state == "failed":
+                rt.last_status = jobs[idx].id + String(" failed")
+                rt.last_error = jobs[idx].error.copy()
+            else:
+                rt.last_status = jobs[idx].id + String(" ") + jobs[idx].state
+        else:
+            still.append(rt.daemon_submitted[i].copy())
+            if jobs[idx].state == "running":
+                state.current_step = Int32(jobs[idx].step)
+                if jobs[idx].total > 0:
+                    state.total_steps = Int32(jobs[idx].total)
+    rt.daemon_submitted = still^
+    if len(rt.daemon_submitted) == 0 and finished_any:
+        state.generating = False
+        state.has_running = False
+        state.current_step = state.total_steps
+        state.perf.gpu_util_pct = 0.0
+
+
+comptime DAEMON_FAIL_STREAK_MAX = 20      # tolerated consecutive poll failures
+comptime DAEMON_FAIL_BACKOFF_FRAMES = 90  # extra wait after a failed poll
+
+
 def graph_tick_and_apply(mut state: InferenceState, mut rt: GraphUiRuntime):
-    """Reserved for the nonblocking graph runner. Blocking mode has no tick."""
-    pass
+    """Per-frame daemon tick: throttled /v1/jobs polling for progress (P11),
+    the queue rail (P12), and result application; periodic health re-probe
+    when the daemon is down (daemon appears/disappears mid-session).
+
+    Poll failures are TOLERATED up to DAEMON_FAIL_STREAK_MAX in a row: a real
+    backend's long single ticks (the zimage ENCODE/DECODE phases run tens of
+    seconds inside one event-loop tick) stall HTTP past any sane timeout, and
+    one slow tick must not orphan a running GPU job."""
+    var active = len(rt.daemon_submitted) > 0
+    if not rt.daemon_ok:
+        rt.daemon_health_tick += 1
+        if rt.daemon_health_tick >= DAEMON_HEALTH_FRAMES:
+            rt.daemon_health_tick = 0
+            daemon_refresh_health(rt)
+        if not rt.daemon_ok:
+            if active:
+                # daemon vanished mid-job (persistent): report, stop tracking
+                rt.last_error = String("daemon lost mid-job")
+                rt.daemon_submitted = List[String]()
+                state.generating = False
+                state.has_running = False
+            return
+    rt.daemon_poll_tick += 1
+    var interval = DAEMON_POLL_ACTIVE_FRAMES if active else DAEMON_POLL_IDLE_FRAMES
+    if rt.daemon_poll_tick < interval:
+        return
+    rt.daemon_poll_tick = 0
+    try:
+        var jobs = daemon_jobs(timeout_ms=4000)
+        _daemon_apply_poll(state, rt, jobs)
+        rt.daemon_fail_streak = 0
+    except e:
+        rt.daemon_fail_streak += 1
+        rt.daemon_poll_tick = -DAEMON_FAIL_BACKOFF_FRAMES  # back off
+        print("[daemon-bridge] poll failed (", rt.daemon_fail_streak, "/",
+              DAEMON_FAIL_STREAK_MAX, "):", String(e))
+        if rt.daemon_fail_streak >= DAEMON_FAIL_STREAK_MAX:
+            rt.daemon_ok = False
+            rt.daemon_fail_streak = 0
+            rt.last_error = String("daemon poll failed: ") + String(e)
 
 
 def graph_progress_fraction(state: InferenceState) -> Float32:

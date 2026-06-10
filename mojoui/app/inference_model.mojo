@@ -253,8 +253,16 @@ struct InferenceState(Movable):
     # ----- Perf -----
     var perf: PerfTelemetry
 
+    # ----- CLI routing override (gen-screen daemon bridge) -----
+    # When non-empty, the CLI fallback resolves THIS backend name instead of
+    # model_options[model_index] — the daemon-scanned model list replaces the
+    # static dropdown, so arch->CLI mapping happens in the screen and lands
+    # here at submit time.
+    var cli_model_override: String
+
     def __init__(out self):
         self.advanced = False
+        self.cli_model_override = String("")
 
         var tasks = List[String]()
         tasks.append(String("T2I - Text to Image"))
