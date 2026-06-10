@@ -8,6 +8,7 @@ job runner.
 """
 
 from std.ffi import external_call
+from std.io.file import open
 from std.memory import UnsafePointer, alloc
 from std.builtin.type_aliases import MutExternalOrigin
 
@@ -76,15 +77,32 @@ struct GraphUiRuntime(Movable):
     var daemon_backend: String                # "stub" | "zimage" | ...
     var daemon_resident: String               # resident checkpoint ("" = none)
     var daemon_submitted: List[String]        # this UI's in-flight job ids
+    var daemon_submitted_miss: List[Int]      # F3: consecutive /v1/jobs misses
     var daemon_jobs_cache: List[DaemonJobInfo]  # last /v1/jobs (queue rail)
     var daemon_done_events: List[DaemonJobInfo] # terminal jobs, drained by screen
     var daemon_poll_tick: Int
     var daemon_health_tick: Int
     var daemon_fail_streak: Int               # consecutive failed polls
+    var health_fail_streak: Int               # F5: consecutive failed probes
     var last_submit_json: String              # G2f audit: exact POSTed genparams
     var submit_width: Int                     # dims of the in-flight daemon job
     var submit_height: Int
     var route_label: String                   # "daemon" | "cli" | reason text
+
+    # ── F4: detached CLI-fallback job (PREBUILT binary, spawned via
+    # nohup+setsid+pidfile; polled per tick — the render thread NEVER blocks
+    # on it and NEVER runs `mojo build`). ──
+    var cli_active: Bool
+    var cli_cancelled: Bool
+    var cli_pid: Int
+    var cli_slug: String
+    var cli_out_png: String
+    var cli_log_path: String
+    var cli_req_json: String
+    var cli_width: Int
+    var cli_height: Int
+    var cli_tick_ct: Int
+    var cli_note: String                      # F11: what the CLI path drops
 
     def __init__(out self):
         self.result_path = String("")
@@ -103,15 +121,28 @@ struct GraphUiRuntime(Movable):
         self.daemon_backend = String("")
         self.daemon_resident = String("")
         self.daemon_submitted = List[String]()
+        self.daemon_submitted_miss = List[Int]()
         self.daemon_jobs_cache = List[DaemonJobInfo]()
         self.daemon_done_events = List[DaemonJobInfo]()
         self.daemon_poll_tick = 0
         self.daemon_health_tick = 0
         self.daemon_fail_streak = 0
+        self.health_fail_streak = 0
         self.last_submit_json = String("")
         self.submit_width = 0
         self.submit_height = 0
         self.route_label = String("")
+        self.cli_active = False
+        self.cli_cancelled = False
+        self.cli_pid = 0
+        self.cli_slug = String("")
+        self.cli_out_png = String("")
+        self.cli_log_path = String("")
+        self.cli_req_json = String("")
+        self.cli_width = 0
+        self.cli_height = 0
+        self.cli_tick_ct = 0
+        self.cli_note = String("")
 
 
 struct GraphBackendRun(Movable):
@@ -527,111 +558,10 @@ def _sample_prompt_json(
     )
 
 
-def _run_klein9b_system(
-    display: QueueJob,
-    negative: String,
-    cfg: Float32,
-    width: Int,
-    height: Int,
-) raises -> GraphBackendRun:
-    _ = _sys_system(
-        String("mkdir -p ")
-        + String(KLEIN_OUT_DIR)
-        + String(" ")
-        + String(KLEIN_REQ_DIR)
-        + String(" ")
-        + String(KLEIN_CAP_DIR)
-        + String(" ")
-        + String(KLEIN_BIN_DIR)
-    )
-    var stem = String("serenityui_klein9b_") + String(display.id)
-    var prompt_json = String(KLEIN_REQ_DIR) + String("/") + stem + String(".json")
-    var caps_pos = String(KLEIN_CAP_DIR) + String("/") + stem + String("_pos.bin")
-    var caps_neg = String(KLEIN_CAP_DIR) + String("/") + stem + String("_neg.bin")
-    var out_png = String(KLEIN_OUT_DIR) + String("/") + stem + String(".png")
-    var log_path = String(KLEIN_OUT_DIR) + String("/") + stem + String(".log")
-    var json = _sample_prompt_json(
-        display.prompt,
-        negative,
-        width,
-        height,
-        display.steps,
-        cfg,
-        display.seed,
-        caps_pos,
-        caps_neg,
-    )
-    _write_text_file(prompt_json, json)
-
-    var pixi = String("/home/alex/.pixi/bin/pixi")
-    var precache_bin = String(KLEIN_BIN_DIR) + String("/klein9b_precache_sample_prompts")
-    var sampler_bin = String(KLEIN_BIN_DIR) + String("/klein_sample_cli")
-    var cmd = (
-        String("cd ")
-        + String(KLEIN_ROOT)
-        + String(" && (")
-        + String("(test -x ")
-        + precache_bin
-        + String(" || ")
-        + pixi
-        + String(" run mojo build -I . -Xlinker -lm -Xlinker -lcuda serenitymojo/pipeline/klein9b_precache_sample_prompts.mojo -o ")
-        + precache_bin
-        + String(") && (test -x ")
-        + sampler_bin
-        + String(" || ")
-        + pixi
-        + String(" run mojo build -I . -Xlinker -lm -Xlinker -lcuda serenitymojo/sampling/klein_sample_cli.mojo -o ")
-        + sampler_bin
-        + String(") && ")
-        + precache_bin
-        + String(" ")
-        + prompt_json
-        + String(" && ")
-        + sampler_bin
-        + String(" serenitymojo/configs/klein9b.json - ")
-        + prompt_json
-        + String(" serenityui ")
-        + out_png
-        + String(") > ")
-        + log_path
-        + String(" 2>&1")
-    )
-    var rc = _sys_system(cmd)
-    if rc != 0:
-        return GraphBackendRun(
-            False,
-            out_png,
-            prompt_json,
-            log_path,
-            cmd,
-            width,
-            height,
-            String("Klein 9B command failed with status ")
-            + String(rc)
-            + String("; see ")
-            + log_path,
-        )
-    if not _path_exists(out_png):
-        return GraphBackendRun(
-            False,
-            out_png,
-            prompt_json,
-            log_path,
-            cmd,
-            width,
-            height,
-            String("Klein 9B finished but did not write ")
-            + out_png
-            + String("; see ")
-            + log_path,
-        )
-    return GraphBackendRun(True, out_png, prompt_json, log_path, cmd, width, height, String(""))
-
-
 # ── Multi-model backend registry ───────────────────────────────────────────
-# Generalises the Klein-9B shell-out to every model the SerenityUI dropdown
-# exposes. Each entry names the Mojo CLI source to build + the invocation
-# contract. New image models only need (1) a `<slug>_sample_cli.mojo` adapter
+# Maps every model the SerenityUI dropdown exposes to a PREBUILT CLI binary
+# (built ahead of time by serenityUI/scripts/build_clis.sh — the UI NEVER
+# builds). New image models only need (1) a `<slug>_sample_cli.mojo` adapter
 # that reads a `serenity.sample_prompts.v1` JSON and writes a PNG, mirroring
 # `klein_sample_cli`, and (2) one entry in `_resolve_model_spec` below.
 #
@@ -769,38 +699,48 @@ def _resolve_model_spec(name: String) raises -> ModelBackendSpec:
     )
 
 
-def _build_clause(bin: String, src: String) -> String:
-    """Shell clause: build `bin` from `src` if not already present."""
-    return (
-        String("(test -x ")
-        + bin
-        + String(" || ")
-        + String(PIXI_BIN)
-        + String(" run mojo build -I . -Xlinker -lm -Xlinker -lcuda ")
-        + src
-        + String(" -o ")
-        + bin
-        + String(")")
-    )
+# ── F4: detached CLI spawn / poll / cancel (the launcher pattern) ──────────
 
 
-def _run_model_system(
-    spec: ModelBackendSpec,
-    display: QueueJob,
-    negative: String,
-    cfg: Float32,
-    width: Int,
-    height: Int,
-) raises -> GraphBackendRun:
-    """Generic model runner: write the request JSON, build the model CLI on
-    demand, run it, and confirm it produced a PNG. Mirrors the proven
-    Klein-9B flow for every registered model."""
+def _sys_pid_alive(pid: Int) -> Bool:
+    """kill(pid, 0) probe — True while the process exists."""
+    if pid <= 0:
+        return False
+    return Int(external_call["kill", Int32](Int32(pid), Int32(0))) == 0
+
+
+def _read_pidfile(path: String) -> Int:
+    try:
+        with open(path, String("r")) as f:
+            var text = f.read()
+            var b = text.as_bytes()
+            var acc = 0
+            var got = False
+            for i in range(text.byte_length()):
+                var c = Int(b[i])
+                if c < 48 or c > 57:
+                    break
+                acc = acc * 10 + (c - 48)
+                got = True
+            if got:
+                return acc
+    except:
+        pass
+    return 0
+
+
+def cli_spawn_model(
+    mut state: InferenceState, mut rt: GraphUiRuntime,
+    spec: ModelBackendSpec, display: QueueJob, size: Int,
+) raises:
+    """Spawn the PREBUILT model CLI detached (nohup + setsid + pidfile +
+    output log) and arm the per-tick poll. The render thread returns
+    immediately; cli_tick() finalizes. NEVER builds anything."""
     _ = _sys_system(
         String("mkdir -p ")
         + String(MODEL_OUT_DIR) + String(" ")
         + String(MODEL_REQ_DIR) + String(" ")
-        + String(MODEL_CAP_DIR) + String(" ")
-        + String(MODEL_BIN_DIR)
+        + String(MODEL_CAP_DIR)
     )
     var stem = String("serenityui_") + spec.slug + String("_") + String(display.id)
     var req_json = String(MODEL_REQ_DIR) + String("/") + stem + String(".json")
@@ -808,9 +748,10 @@ def _run_model_system(
     var caps_neg = String(MODEL_CAP_DIR) + String("/") + stem + String("_neg.bin")
     var out_png = String(MODEL_OUT_DIR) + String("/") + stem + String(".png")
     var log_path = String(MODEL_OUT_DIR) + String("/") + stem + String(".log")
+    var pid_path = String(MODEL_OUT_DIR) + String("/") + stem + String(".pid")
     var json = _sample_prompt_json(
-        display.prompt, negative, width, height,
-        display.steps, cfg, display.seed, caps_pos, caps_neg,
+        display.prompt, state.negative, size, size,
+        display.steps, state.cfg, display.seed, caps_pos, caps_neg,
         spec.needs_precache,
     )
     _write_text_file(req_json, json)
@@ -826,71 +767,96 @@ def _run_model_system(
             spec.bin + String(" ") + spec.config + String(" - ")
             + req_json + String(" serenityui ") + out_png
         )
-
-    var build_steps = String("")
-    var run_steps = String("")
+    var chain = String("")
     if spec.needs_precache:
-        build_steps += _build_clause(spec.precache_bin, spec.precache_src) + String(" && ")
-        run_steps += spec.precache_bin + String(" ") + req_json + String(" && ")
-    build_steps += _build_clause(spec.bin, spec.src)
+        chain += spec.precache_bin + String(" ") + req_json + String(" && ")
+    chain += invoke
 
+    # setsid: the spawned bash leads a NEW process group (pgid == pid), so
+    # cancel can kill the whole tree with one negative-pid kill.
     var cmd = (
-        String("cd ") + String(SERENITY_ROOT) + String(" && (")
-        + build_steps + String(" && ") + run_steps + invoke
-        + String(") > ") + log_path + String(" 2>&1")
+        String("cd ") + String(SERENITY_ROOT)
+        + String(" && nohup setsid bash -c '") + chain + String("' > ")
+        + log_path + String(" 2>&1 & echo $! > ") + pid_path
     )
-    var rc = _sys_system(cmd)
-    if rc != 0:
-        return GraphBackendRun(
-            False, out_png, req_json, log_path, cmd, width, height,
-            spec.slug + String(" command failed with status ") + String(rc)
-            + String("; see ") + log_path,
+    _ = _sys_system(cmd)
+    rt.cli_pid = _read_pidfile(pid_path)
+    rt.cli_active = True
+    rt.cli_cancelled = False
+    rt.cli_slug = spec.slug.copy()
+    rt.cli_out_png = out_png.copy()
+    rt.cli_log_path = log_path.copy()
+    rt.cli_req_json = req_json.copy()
+    rt.cli_width = size
+    rt.cli_height = size
+    rt.cli_tick_ct = 0
+    # F11: honest about what the CLI request JSON does NOT carry.
+    rt.cli_note = (
+        String("CLI: loras/variation/images ignored; size forced ")
+        + String(size)
+    )
+    rt.route_label = String("cli")
+    rt.last_command = cmd^
+    rt.last_prompt_json = req_json.copy()
+    rt.last_log_path = log_path.copy()
+    rt.last_status = String("CLI ") + spec.slug + String(" running (pid ") \
+        + String(rt.cli_pid) + String(")")
+    rt.last_error = String("")
+    print("[cli-fallback] spawned", spec.slug, "pid", rt.cli_pid, "log", log_path)
+
+
+comptime CLI_POLL_FRAMES = 15   # ~4 Hz process/output poll
+
+
+def cli_tick(mut state: InferenceState, mut rt: GraphUiRuntime):
+    """Per-frame nonblocking poll of the detached CLI job (F4)."""
+    if not rt.cli_active:
+        return
+    rt.cli_tick_ct += 1
+    if rt.cli_tick_ct < CLI_POLL_FRAMES:
+        return
+    rt.cli_tick_ct = 0
+    if _sys_pid_alive(rt.cli_pid):
+        return  # still working; log/PNG polled again next interval
+    rt.cli_active = False
+    if rt.cli_cancelled:
+        rt.last_status = String("CLI cancelled")
+        state.has_running = False
+        state.generating = False
+        state.perf.gpu_util_pct = 0.0
+        return
+    if _path_exists(rt.cli_out_png):
+        var run = GraphBackendRun(
+            True, rt.cli_out_png, rt.cli_req_json, rt.cli_log_path,
+            rt.last_command, rt.cli_width, rt.cli_height, String(""),
         )
-    if not _path_exists(out_png):
-        return GraphBackendRun(
-            False, out_png, req_json, log_path, cmd, width, height,
-            spec.slug + String(" finished but did not write ") + out_png
-            + String("; see ") + log_path,
-        )
-    return GraphBackendRun(True, out_png, req_json, log_path, cmd, width, height, String(""))
-
-
-def run_klein9b_graph_once(state: InferenceState, display: QueueJob) raises -> GraphBackendRun:
-    """Dispatch the current UI model selection to its serenitymojo backend.
-
-    Name kept for source compatibility with existing callers; it now routes by
-    the selected model rather than always running Klein 9B."""
-    var model_name = String("Klein 9B")
-    if state.cli_model_override.byte_length() > 0:
-        # the gen screen mapped the daemon-scanned selection to a CLI backend
-        model_name = state.cli_model_override.copy()
+        _finish_success(state, rt, run^)
     else:
-        var mi = Int(state.model_index)
-        if mi >= 0 and mi < len(state.model_options):
-            model_name = state.model_options[mi].copy()
-    var spec = _resolve_model_spec(model_name)
-    if not spec.supported:
-        return GraphBackendRun.failure(spec.unsupported_msg)
+        _finish_failed(
+            state, rt,
+            String("CLI ") + rt.cli_slug
+            + String(" exited without writing ") + rt.cli_out_png
+            + String("; see ") + rt.cli_log_path,
+        )
 
-    var size = _square_klein_size(display.width, display.height)
-    var out_png = (
-        String(MODEL_OUT_DIR) + String("/serenityui_") + spec.slug
-        + String("_") + String(display.id) + String(".png")
+
+def cli_cancel(mut state: InferenceState, mut rt: GraphUiRuntime):
+    """Kill the detached CLI's whole process group (F4 cancel)."""
+    if not rt.cli_active:
+        return
+    rt.cli_cancelled = True
+    # /usr/bin/kill: dash's `kill` builtin rejects `-- -PGID` (rc=2)
+    _ = _sys_system(
+        String("/usr/bin/kill -TERM -- -") + String(rt.cli_pid)
+        + String(" 2>/dev/null; sleep 0.2; /usr/bin/kill -KILL -- -")
+        + String(rt.cli_pid) + String(" 2>/dev/null")
     )
-    # Build + dry-validate the Comfy-shaped graph (executor sanity) before the
-    # backend launch. Cosmetic for non-Klein models but keeps the UI contract.
-    var graph = build_klein9b_inference_graph(state, display, out_png, Int32(size), Int32(size))
-    var canvas = CanvasState()
-    var device = WorkflowDeviceConfig()
-    device.dry_run = False
-    var exec_result = execute_workflow_with_device(graph, canvas, device)
-    if not exec_result.success:
-        return GraphBackendRun.failure(String("workflow executor failed before backend launch"))
-
-    # Klein keeps its proven dedicated runner; everything else uses the generic.
-    if spec.slug == String("klein9b"):
-        return _run_klein9b_system(display, state.negative, state.cfg, size, size)
-    return _run_model_system(spec, display, state.negative, state.cfg, size, size)
+    rt.cli_active = False
+    rt.last_status = String("CLI cancelled (pid ") + String(rt.cli_pid) + String(")")
+    state.has_running = False
+    state.generating = False
+    state.perf.gpu_util_pct = 0.0
+    print("[cli-fallback] cancelled pid group", rt.cli_pid)
 
 
 def dry_run_klein9b_graph(state: InferenceState) raises -> Bool:
@@ -962,23 +928,73 @@ def _finish_failed(mut state: InferenceState, mut rt: GraphUiRuntime, msg: Strin
 
 
 def graph_submit_current(mut state: InferenceState, mut rt: GraphUiRuntime):
-    """Run the current UI params through the graph executor and Klein 9B."""
+    """Generate via the CLI fallback: resolve the model's PREBUILT binary,
+    sanity-run the Comfy-shaped graph, then SPAWN the CLI detached (F4).
+    Missing binary -> instant clear error, no build, no block."""
     var display = _snapshot_display_job(state)
     state.next_job_id = state.next_job_id + 1
-    _start_display_job(state, display)
-    rt.last_status = String("running Klein 9B graph")
-    rt.last_error = String("")
+
+    var model_name = String("Klein 9B")
+    if state.cli_model_override.byte_length() > 0:
+        # the gen screen mapped the daemon-scanned selection to a CLI backend
+        model_name = state.cli_model_override.copy()
+    else:
+        var mi = Int(state.model_index)
+        if mi >= 0 and mi < len(state.model_options):
+            model_name = state.model_options[mi].copy()
+    var spec: ModelBackendSpec
     try:
-        var run = run_klein9b_graph_once(state, state.running)
-        if run.ok:
-            _finish_success(state, rt, run^)
-        else:
-            _finish_failed(state, rt, run.error)
+        spec = _resolve_model_spec(model_name)
+    except e:
+        _finish_failed(state, rt, String(e))
+        return
+    if not spec.supported:
+        _finish_failed(state, rt, spec.unsupported_msg)
+        return
+    # F4: the binary must be PREBUILT — instant error path when missing.
+    if not _path_exists(spec.bin):
+        _finish_failed(
+            state, rt,
+            String("CLI backend not built: ") + spec.bin
+            + String(" (run scripts/build_clis.sh)"),
+        )
+        return
+    if spec.needs_precache and not _path_exists(spec.precache_bin):
+        _finish_failed(
+            state, rt,
+            String("CLI backend not built: ") + spec.precache_bin
+            + String(" (run scripts/build_clis.sh)"),
+        )
+        return
+
+    var size = _square_klein_size(display.width, display.height)
+    var out_png = (
+        String(MODEL_OUT_DIR) + String("/serenityui_") + spec.slug
+        + String("_") + String(display.id) + String(".png")
+    )
+    try:
+        # Graph executor sanity (pure in-process, fast) before the launch.
+        var graph = build_klein9b_inference_graph(
+            state, display, out_png, Int32(size), Int32(size)
+        )
+        var canvas = CanvasState()
+        var device = WorkflowDeviceConfig()
+        device.dry_run = False
+        var exec_result = execute_workflow_with_device(graph, canvas, device)
+        if not exec_result.success:
+            _finish_failed(
+                state, rt, String("workflow executor failed before backend launch")
+            )
+            return
+        _start_display_job(state, display)
+        cli_spawn_model(state, rt, spec, display, size)
     except e:
         _finish_failed(state, rt, String(e))
 
 
 def graph_cancel_all(mut state: InferenceState, mut rt: GraphUiRuntime):
+    if rt.cli_active:
+        cli_cancel(state, rt)
     rt.last_status = String("cancelled")
     state.queued = List[QueueJob]()
     state.has_running = False
@@ -992,7 +1008,6 @@ def graph_cancel_all(mut state: InferenceState, mut rt: GraphUiRuntime):
 # ── daemon bridge (DAEMON_BRIDGE_SPEC.md): submit / poll / cancel ───────────
 comptime DAEMON_POLL_ACTIVE_FRAMES = 6    # ~10 Hz progress poll while a job runs
 comptime DAEMON_POLL_IDLE_FRAMES = 60     # queue-rail freshness when idle
-comptime DAEMON_HEALTH_FRAMES = 240       # health re-probe cadence when down
 
 
 def daemon_refresh_health(mut rt: GraphUiRuntime):
@@ -1013,6 +1028,7 @@ def daemon_submit_params(
     try:
         var job_id = daemon_generate(genparams_json)
         rt.daemon_submitted.append(job_id.copy())
+        rt.daemon_submitted_miss.append(0)
         rt.last_submit_json = genparams_json.copy()
         rt.submit_width = width
         rt.submit_height = height
@@ -1052,18 +1068,37 @@ def _daemon_find_job(jobs: List[DaemonJobInfo], id: String) -> Int:
     return -1
 
 
+comptime DAEMON_LOST_MISS_MAX = 3  # F3: consecutive vanished-from-/v1/jobs polls
+
+
 def _daemon_apply_poll(
     mut state: InferenceState, mut rt: GraphUiRuntime, jobs: List[DaemonJobInfo]
 ):
     """Fold one /v1/jobs snapshot into UI state: progress for the tracked
-    jobs, terminal jobs -> done_events (+ preview result on done)."""
+    jobs, terminal jobs -> done_events (+ preview result on done).
+
+    F3: a tracked job missing from /v1/jobs DAEMON_LOST_MISS_MAX polls in a
+    row is declared "lost (daemon restarted)" — a restarted daemon serves a
+    fresh job list, so the old id never comes back. One/two misses are
+    tolerated (submit/poll race)."""
     rt.daemon_jobs_cache = jobs.copy()
     var still = List[String]()
+    var still_miss = List[Int]()
     var finished_any = False
     for i in range(len(rt.daemon_submitted)):
         var idx = _daemon_find_job(jobs, rt.daemon_submitted[i])
         if idx < 0:
+            var miss = rt.daemon_submitted_miss[i] + 1
+            if miss >= DAEMON_LOST_MISS_MAX:
+                finished_any = True
+                rt.last_status = (
+                    rt.daemon_submitted[i] + String(" lost (daemon restarted)")
+                )
+                rt.last_error = rt.last_status.copy()
+                print("[daemon-bridge]", rt.last_status)
+                continue  # drop the phantom job
             still.append(rt.daemon_submitted[i].copy())  # submit/poll race
+            still_miss.append(miss)
             continue
         if jobs[idx].is_terminal():
             finished_any = True
@@ -1083,11 +1118,13 @@ def _daemon_apply_poll(
                 rt.last_status = jobs[idx].id + String(" ") + jobs[idx].state
         else:
             still.append(rt.daemon_submitted[i].copy())
+            still_miss.append(0)
             if jobs[idx].state == "running":
                 state.current_step = Int32(jobs[idx].step)
                 if jobs[idx].total > 0:
                     state.total_steps = Int32(jobs[idx].total)
     rt.daemon_submitted = still^
+    rt.daemon_submitted_miss = still_miss^
     if len(rt.daemon_submitted) == 0 and finished_any:
         state.generating = False
         state.has_running = False
@@ -1097,31 +1134,62 @@ def _daemon_apply_poll(
 
 comptime DAEMON_FAIL_STREAK_MAX = 20      # tolerated consecutive poll failures
 comptime DAEMON_FAIL_BACKOFF_FRAMES = 90  # extra wait after a failed poll
+comptime DAEMON_HEALTH_PROBE_FRAMES = 120 # F5: dedicated probe ~every 2 s @60fps
+comptime DAEMON_HEALTH_FAILS_DOWN = 2     # F5: red after ~4 s unreachable
+comptime DAEMON_HEALTH_FAILS_LOST = 3     # F3/F5: drop tracked jobs after ~6 s
 
 
 def graph_tick_and_apply(mut state: InferenceState, mut rt: GraphUiRuntime):
-    """Per-frame daemon tick: throttled /v1/jobs polling for progress (P11),
-    the queue rail (P12), and result application; periodic health re-probe
-    when the daemon is down (daemon appears/disappears mid-session).
+    """Per-frame tick: detached-CLI poll (F4), a DEDICATED lightweight
+    health probe every ~2 s with a 500 ms timeout (F5 — separate from job
+    polls, runs whether the daemon looked up or down), then throttled
+    /v1/jobs polling for progress (P11), the queue rail (P12), and result
+    application.
 
     Poll failures are TOLERATED up to DAEMON_FAIL_STREAK_MAX in a row: a real
     backend's long single ticks (the zimage ENCODE/DECODE phases run tens of
     seconds inside one event-loop tick) stall HTTP past any sane timeout, and
-    one slow tick must not orphan a running GPU job."""
+    one slow tick must not orphan a running GPU job. (The health probe is
+    subject to the same caveat on a busy single-thread GPU daemon; the
+    DOWN verdict therefore needs DAEMON_HEALTH_FAILS_DOWN consecutive
+    failures, and tracked jobs are only dropped after
+    DAEMON_HEALTH_FAILS_LOST.)"""
+    cli_tick(state, rt)
     var active = len(rt.daemon_submitted) > 0
-    if not rt.daemon_ok:
-        rt.daemon_health_tick += 1
-        if rt.daemon_health_tick >= DAEMON_HEALTH_FRAMES:
-            rt.daemon_health_tick = 0
-            daemon_refresh_health(rt)
-        if not rt.daemon_ok:
-            if active:
-                # daemon vanished mid-job (persistent): report, stop tracking
-                rt.last_error = String("daemon lost mid-job")
+
+    # ── F5: dedicated health probe (status dot honesty + down detection) ──
+    rt.daemon_health_tick += 1
+    if rt.daemon_health_tick >= DAEMON_HEALTH_PROBE_FRAMES:
+        rt.daemon_health_tick = 0
+        var h = daemon_health()  # 500 ms timeout; refused connect fails fast
+        if h.ok:
+            if not rt.daemon_ok:
+                print("[daemon-bridge] health recovered (backend:", h.backend, ")")
+            rt.daemon_ok = True
+            rt.daemon_backend = h.backend.copy()
+            rt.daemon_resident = h.resident.copy()
+            rt.health_fail_streak = 0
+        else:
+            rt.health_fail_streak += 1
+            if rt.health_fail_streak >= DAEMON_HEALTH_FAILS_DOWN and rt.daemon_ok:
+                rt.daemon_ok = False
+                print("[daemon-bridge] health probe failed x",
+                      rt.health_fail_streak, "-> daemon DOWN")
+            if active and rt.health_fail_streak >= DAEMON_HEALTH_FAILS_LOST:
+                # daemon stayed unreachable: stop tracking, free Generate
+                for i in range(len(rt.daemon_submitted)):
+                    print("[daemon-bridge]", rt.daemon_submitted[i],
+                          "lost (daemon down)")
+                rt.last_status = rt.daemon_submitted[0] + String(" lost (daemon down)")
+                rt.last_error = rt.last_status.copy()
                 rt.daemon_submitted = List[String]()
+                rt.daemon_submitted_miss = List[Int]()
                 state.generating = False
                 state.has_running = False
-            return
+                state.perf.gpu_util_pct = 0.0
+    if not rt.daemon_ok:
+        return
+
     rt.daemon_poll_tick += 1
     var interval = DAEMON_POLL_ACTIVE_FRAMES if active else DAEMON_POLL_IDLE_FRAMES
     if rt.daemon_poll_tick < interval:

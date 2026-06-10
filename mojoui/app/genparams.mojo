@@ -180,12 +180,121 @@ struct GenParams(Copyable, Movable):
                 p.loras.append(GenLora(ent[String("name")].as_string(), w))
         return p^
 
+    @staticmethod
+    def _chk(
+        obj: JSONValue, key: String, want_int: Bool, want_num: Bool,
+        want_str: Bool, mut ignored: List[String],
+    ) raises -> Bool:
+        """True iff `key` is present AND correctly typed. Present-but-wrong
+        typed keys are recorded in `ignored` (F8: never silently default)."""
+        if not obj.contains(key):
+            return False
+        var v = obj[key]
+        if want_int and v.is_int():
+            return True
+        if want_num and v.is_number():
+            return True
+        if want_str and v.is_string():
+            return True
+        ignored.append(key.copy())
+        return False
+
+    @staticmethod
+    def from_json_validated(
+        text: String, base: GenParams, mut ignored: List[String],
+    ) raises -> GenParams:
+        """F8 preset load: start from `base` (the CURRENT params) and apply
+        only present, correctly-typed fields. Wrong-typed fields keep the
+        current value and land in `ignored` so the screen can report
+        "preset field 'x' ignored (wrong type)"."""
+        var obj = loads(text)
+        if not obj.is_object():
+            raise Error("genparams: body must be a JSON object")
+        var p = base.copy()
+        if GenParams._chk(obj, String("model"), False, False, True, ignored):
+            p.model = obj[String("model")].as_string()
+        if GenParams._chk(obj, String("prompt"), False, False, True, ignored):
+            p.prompt = obj[String("prompt")].as_string()
+        if GenParams._chk(obj, String("negative"), False, False, True, ignored):
+            p.negative = obj[String("negative")].as_string()
+        if GenParams._chk(obj, String("width"), True, False, False, ignored):
+            p.width = obj[String("width")].as_int()
+        if GenParams._chk(obj, String("height"), True, False, False, ignored):
+            p.height = obj[String("height")].as_int()
+        if GenParams._chk(obj, String("steps"), True, False, False, ignored):
+            p.steps = obj[String("steps")].as_int()
+        if GenParams._chk(obj, String("seed"), True, False, False, ignored):
+            p.seed = obj[String("seed")].as_int()
+        if GenParams._chk(obj, String("cfg"), False, True, False, ignored):
+            p.cfg = obj[String("cfg")].as_float()
+        if GenParams._chk(obj, String("sampler"), False, False, True, ignored):
+            p.sampler = obj[String("sampler")].as_string()
+        if GenParams._chk(obj, String("scheduler"), False, False, True, ignored):
+            p.scheduler = obj[String("scheduler")].as_string()
+        if GenParams._chk(obj, String("variation_seed"), True, False, False, ignored):
+            p.variation_seed = obj[String("variation_seed")].as_int()
+        if GenParams._chk(obj, String("variation_strength"), False, True, False, ignored):
+            p.variation_strength = obj[String("variation_strength")].as_float()
+        if GenParams._chk(obj, String("images"), True, False, False, ignored):
+            p.images = obj[String("images")].as_int()
+        if obj.contains(String("lora")):
+            if not obj[String("lora")].is_array():
+                ignored.append(String("lora"))
+            else:
+                p.loras = List[GenLora]()
+                var arr = obj[String("lora")]
+                for i in range(arr.length()):
+                    var ent = arr[i]
+                    if not ent.is_object() or not ent.contains(String("name")) \
+                            or not ent[String("name")].is_string():
+                        ignored.append(String("lora[") + String(i) + String("]"))
+                        continue
+                    var w = GenParams._num(ent, String("weight"), 1.0)
+                    p.loras.append(GenLora(ent[String("name")].as_string(), w))
+        return p^
+
 
 def _find_option(options: List[String], name: String) -> Int32:
     for i in range(len(options)):
         if options[i] == name:
             return Int32(i)
     return Int32(-1)
+
+
+def _round2(v: Float64) -> Float64:
+    """Round to 2 decimals — kills Float32 widget-mirror noise on COMMIT
+    (3.7000000476837158 -> 3.7) without touching externally-set values."""
+    if v >= 0.0:
+        return Float64(Int(v * 100.0 + 0.5)) / 100.0
+    return Float64(Int(v * 100.0 - 0.5)) / 100.0
+
+
+def _parse_seed_text(text: String, fallback: Int) -> Int:
+    """Parse the seed TEXT mirror as a signed integer (whole Int range —
+    no Float32 truncation). Anything unparsable keeps the old seed."""
+    var b = text.as_bytes()
+    var n = text.byte_length()
+    var i = 0
+    while i < n and (b[i] == 32 or b[i] == 9):
+        i += 1
+    var neg = False
+    if i < n and (b[i] == 45 or b[i] == 43):  # '-' / '+'
+        neg = b[i] == 45
+        i += 1
+    var got = False
+    var acc = 0
+    while i < n:
+        var c = Int(b[i])
+        if c < 48 or c > 57:
+            break
+        acc = acc * 10 + (c - 48)
+        got = True
+        i += 1
+    while i < n and (b[i] == 32 or b[i] == 9):
+        i += 1
+    if not got or i != n:
+        return fallback
+    return -acc if neg else acc
 
 
 struct GenParamStore(Movable):
@@ -203,13 +312,17 @@ struct GenParamStore(Movable):
     var _seen_version: UInt64     # mirror-subscriber's last-synced version
 
     # ── widget edit mirrors (immediate-mode bindings) ──
+    # Seed is a TEXT mirror (m_seed_text): the drag widget is Float32-only
+    # and Float32 cannot represent seeds > 2^24 (123456789 -> 123456792).
+    # cfg / variation_strength / lora weights stay Float32 for the widgets
+    # but are committed through Float64 round-to-2-decimals (see _round2).
     var m_prompt: String
     var m_negative: String
     var m_width: Float32
     var m_height: Float32
     var m_steps: Float32
     var m_cfg: Float32
-    var m_seed: Float32
+    var m_seed_text: String            # integer-typed end-to-end (F1)
     var m_variation_seed: Float32
     var m_variation_strength: Float32
     var m_images: Float32
@@ -218,6 +331,24 @@ struct GenParamStore(Movable):
     var m_scheduler_index: Int32
     var m_lora_indices: List[Int32]    # per-row index into lora options
     var m_lora_weights: List[Float32]  # per-row weight 0..2
+
+    # ── per-field DIRTY flags (F2): commit_mirrors only set()s fields the
+    # user actually edited; refreshed mirror values are NEVER re-committed
+    # (a refresh through Float32 must not corrupt externally-set params). ──
+    var d_model: Bool
+    var d_prompt: Bool
+    var d_negative: Bool
+    var d_width: Bool
+    var d_height: Bool
+    var d_steps: Bool
+    var d_cfg: Bool
+    var d_seed: Bool
+    var d_sampler: Bool
+    var d_scheduler: Bool
+    var d_variation_seed: Bool
+    var d_variation_strength: Bool
+    var d_images: Bool
+    var d_loras: Bool
 
     def __init__(out self):
         self.params = GenParams()
@@ -230,7 +361,7 @@ struct GenParamStore(Movable):
         self.m_height = 512.0
         self.m_steps = 20.0
         self.m_cfg = 4.5
-        self.m_seed = 0.0
+        self.m_seed_text = String("0")
         self.m_variation_seed = 0.0
         self.m_variation_strength = 0.0
         self.m_images = 1.0
@@ -239,6 +370,44 @@ struct GenParamStore(Movable):
         self.m_scheduler_index = 0
         self.m_lora_indices = List[Int32]()
         self.m_lora_weights = List[Float32]()
+        self.d_model = False
+        self.d_prompt = False
+        self.d_negative = False
+        self.d_width = False
+        self.d_height = False
+        self.d_steps = False
+        self.d_cfg = False
+        self.d_seed = False
+        self.d_sampler = False
+        self.d_scheduler = False
+        self.d_variation_seed = False
+        self.d_variation_strength = False
+        self.d_images = False
+        self.d_loras = False
+
+    def clear_dirty(mut self):
+        self.d_model = False
+        self.d_prompt = False
+        self.d_negative = False
+        self.d_width = False
+        self.d_height = False
+        self.d_steps = False
+        self.d_cfg = False
+        self.d_seed = False
+        self.d_sampler = False
+        self.d_scheduler = False
+        self.d_variation_seed = False
+        self.d_variation_strength = False
+        self.d_images = False
+        self.d_loras = False
+
+    def any_dirty(self) -> Bool:
+        return (
+            self.d_model or self.d_prompt or self.d_negative or self.d_width
+            or self.d_height or self.d_steps or self.d_cfg or self.d_seed
+            or self.d_sampler or self.d_scheduler or self.d_variation_seed
+            or self.d_variation_strength or self.d_images or self.d_loras
+        )
 
     # ── H2: THE single dispatch point. Every param edit lands here. ──
     def set(mut self, var p: GenParams) raises:
@@ -259,34 +428,60 @@ struct GenParamStore(Movable):
         scheduler_names: List[String],
         lora_names: List[String],
     ) raises -> Bool:
-        """Build a GenParams from the widget mirrors; when it differs from
-        `params`, route it through set() (the H2 dispatch). Returns True iff
-        a notify happened. Called once per frame by the gen screen."""
+        """Apply the DIRTY widget mirrors onto a copy of `params`; when it
+        differs, route it through set() (the H2 dispatch). Non-dirty fields
+        are NEVER rebuilt from the mirrors — a refresh()ed value that lost
+        precision in a Float32 mirror cannot corrupt the canonical params
+        (F1/F2). Returns True iff a notify happened. Called once per frame
+        by the gen screen; the screen sets d_* when a widget reports an
+        edit and this clears them after the commit."""
         if self._seen_version != self.version:
             # The mirrors are STALE: an external set() (preset load,
             # reuse-params, node view) landed since the last refresh. A
             # subscriber must re-read before it may write — otherwise the
             # end-of-frame commit silently reverts the external change.
+            # Edits from this frame are dropped (refresh wins).
+            self.clear_dirty()
             return False
-        var p = GenParams()
-        p.model = self._name_at(model_names, self.m_model_index)
-        p.prompt = self.m_prompt.copy()
-        p.negative = self.m_negative.copy()
-        p.width = Int(self.m_width)
-        p.height = Int(self.m_height)
-        p.steps = Int(self.m_steps) if Int(self.m_steps) >= 1 else 1
-        p.cfg = Float64(self.m_cfg)
-        p.seed = Int(self.m_seed)
-        p.sampler = self._name_at(sampler_names, self.m_sampler_index)
-        p.scheduler = self._name_at(scheduler_names, self.m_scheduler_index)
-        p.variation_seed = Int(self.m_variation_seed)
-        p.variation_strength = Float64(self.m_variation_strength)
-        p.images = Int(self.m_images) if Int(self.m_images) >= 1 else 1
-        for i in range(len(self.m_lora_indices)):
-            var name = self._name_at(lora_names, self.m_lora_indices[i])
-            if name == String(""):
-                continue
-            p.loras.append(GenLora(name^, Float64(self.m_lora_weights[i])))
+        if not self.any_dirty():
+            return False
+        var p = self.params.copy()
+        if self.d_model:
+            p.model = self._name_at(model_names, self.m_model_index)
+        if self.d_prompt:
+            p.prompt = self.m_prompt.copy()
+        if self.d_negative:
+            p.negative = self.m_negative.copy()
+        if self.d_width:
+            p.width = Int(self.m_width)
+        if self.d_height:
+            p.height = Int(self.m_height)
+        if self.d_steps:
+            p.steps = Int(self.m_steps) if Int(self.m_steps) >= 1 else 1
+        if self.d_cfg:
+            p.cfg = _round2(Float64(self.m_cfg))
+        if self.d_seed:
+            p.seed = _parse_seed_text(self.m_seed_text, p.seed)
+        if self.d_sampler:
+            p.sampler = self._name_at(sampler_names, self.m_sampler_index)
+        if self.d_scheduler:
+            p.scheduler = self._name_at(scheduler_names, self.m_scheduler_index)
+        if self.d_variation_seed:
+            p.variation_seed = Int(self.m_variation_seed)
+        if self.d_variation_strength:
+            p.variation_strength = _round2(Float64(self.m_variation_strength))
+        if self.d_images:
+            p.images = Int(self.m_images) if Int(self.m_images) >= 1 else 1
+        if self.d_loras:
+            p.loras = List[GenLora]()
+            for i in range(len(self.m_lora_indices)):
+                var name = self._name_at(lora_names, self.m_lora_indices[i])
+                if name == String(""):
+                    continue
+                p.loras.append(
+                    GenLora(name^, _round2(Float64(self.m_lora_weights[i])))
+                )
+        self.clear_dirty()
         if p.same_as(self.params):
             return False
         self.set(p^)
@@ -314,7 +509,7 @@ struct GenParamStore(Movable):
         self.m_height = Float32(self.params.height)
         self.m_steps = Float32(self.params.steps)
         self.m_cfg = Float32(self.params.cfg)
-        self.m_seed = Float32(self.params.seed)
+        self.m_seed_text = String(self.params.seed)
         self.m_variation_seed = Float32(self.params.variation_seed)
         self.m_variation_strength = Float32(self.params.variation_strength)
         self.m_images = Float32(self.params.images)
@@ -337,4 +532,6 @@ struct GenParamStore(Movable):
             self.m_lora_indices.append(li)
             self.m_lora_weights.append(Float32(self.params.loras[i].weight))
         self._seen_version = self.version
+        # A refresh re-seeds the mirrors: nothing is user-edited anymore.
+        self.clear_dirty()
         return True

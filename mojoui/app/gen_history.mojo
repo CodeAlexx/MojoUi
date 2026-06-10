@@ -129,18 +129,34 @@ def read_genparams_from_png(path: String) raises -> String:
 
 
 # ── stars (P16) ──────────────────────────────────────────────────────────────
-def load_stars() -> List[String]:
+def load_stars(mut warning: String) -> List[String]:
+    """Load starred ids. A CORRUPT sidecar is renamed to .corrupt and we
+    start fresh with `warning` set (F9: the next star toggle must not
+    silently overwrite a recoverable file)."""
     var out = List[String]()
+    var text: String
     try:
-        var obj = loads(_read_text(String(STARS_PATH)))
+        text = _read_text(String(STARS_PATH))
+    except:
+        return out^  # no stars file yet — first run
+    try:
+        var obj = loads(text)
         if obj.is_object() and obj.contains(String("starred")):
             var arr = obj[String("starred")]
             if arr.is_array():
                 for i in range(arr.length()):
                     if arr[i].is_string():
                         out.append(arr[i].as_string())
+        else:
+            raise Error("stars sidecar: wrong shape")
     except:
-        pass  # no stars file yet
+        _ = _shell(
+            String("mv '") + STARS_PATH + "' '" + STARS_PATH + ".corrupt'"
+        )
+        warning = String(
+            "stars file corrupt — moved to ui_stars.json.corrupt, starting fresh"
+        )
+        out = List[String]()
     return out^
 
 
