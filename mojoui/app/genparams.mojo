@@ -44,7 +44,9 @@ struct GenParams(Copyable, Movable):
     """The whole generation request. Canonical JSON = serenity.genparams.v1."""
 
     var model: String
-    var prompt: String
+    var prompt: String            # the RESOLVED prompt (what the backend sees)
+    var prompt_raw: String        # P9/P10: original prompt WITH syntax ("" =
+                                  # prompt had no syntax / is itself raw)
     var negative: String
     var width: Int
     var height: Int
@@ -56,11 +58,14 @@ struct GenParams(Copyable, Movable):
     var variation_seed: Int       # P5: UI+genparams plumbing (backend may ignore)
     var variation_strength: Float64
     var images: Int               # P6: images-count
+    var init_image: String        # P7: img2img init image path ("" = txt2img)
+    var creativity: Float64       # P7: 0..1 — denoise start sigma fraction
     var loras: List[GenLora]
 
     def __init__(out self):
         self.model = String("")
         self.prompt = String("")
+        self.prompt_raw = String("")
         self.negative = String("")
         self.width = 512
         self.height = 512
@@ -72,12 +77,15 @@ struct GenParams(Copyable, Movable):
         self.variation_seed = 0
         self.variation_strength = 0.0
         self.images = 1
+        self.init_image = String("")
+        self.creativity = 0.5
         self.loras = List[GenLora]()
 
     def same_as(self, other: GenParams) -> Bool:
         if (
             self.model != other.model
             or self.prompt != other.prompt
+            or self.prompt_raw != other.prompt_raw
             or self.negative != other.negative
             or self.width != other.width
             or self.height != other.height
@@ -89,6 +97,8 @@ struct GenParams(Copyable, Movable):
             or self.variation_seed != other.variation_seed
             or self.variation_strength != other.variation_strength
             or self.images != other.images
+            or self.init_image != other.init_image
+            or self.creativity != other.creativity
         ):
             return False
         if len(self.loras) != len(other.loras):
@@ -107,6 +117,7 @@ struct GenParams(Copyable, Movable):
         o.set("schema", JSONValue.from_string(String(GENPARAMS_SCHEMA)))
         o.set("model", JSONValue.from_string(self.model))
         o.set("prompt", JSONValue.from_string(self.prompt))
+        o.set("prompt_raw", JSONValue.from_string(self.prompt_raw))
         o.set("negative", JSONValue.from_string(self.negative))
         o.set("width", JSONValue.from_int(self.width))
         o.set("height", JSONValue.from_int(self.height))
@@ -118,6 +129,8 @@ struct GenParams(Copyable, Movable):
         o.set("variation_seed", JSONValue.from_int(self.variation_seed))
         o.set("variation_strength", JSONValue.from_float(self.variation_strength))
         o.set("images", JSONValue.from_int(self.images))
+        o.set("init_image", JSONValue.from_string(self.init_image))
+        o.set("creativity", JSONValue.from_float(self.creativity))
         var la = JSONValue.new_array()
         for i in range(len(self.loras)):
             var lo = JSONValue.new_object()
@@ -155,6 +168,7 @@ struct GenParams(Copyable, Movable):
         var p = GenParams()
         p.model = GenParams._str(obj, String("model"), p.model)
         p.prompt = GenParams._str(obj, String("prompt"), p.prompt)
+        p.prompt_raw = GenParams._str(obj, String("prompt_raw"), p.prompt_raw)
         p.negative = GenParams._str(obj, String("negative"), p.negative)
         p.width = GenParams._int(obj, String("width"), p.width)
         p.height = GenParams._int(obj, String("height"), p.height)
@@ -168,6 +182,8 @@ struct GenParams(Copyable, Movable):
             obj, String("variation_strength"), p.variation_strength
         )
         p.images = GenParams._int(obj, String("images"), p.images)
+        p.init_image = GenParams._str(obj, String("init_image"), p.init_image)
+        p.creativity = GenParams._num(obj, String("creativity"), p.creativity)
         if obj.contains(String("lora")) and obj[String("lora")].is_array():
             var arr = obj[String("lora")]
             for i in range(arr.length()):
@@ -215,6 +231,8 @@ struct GenParams(Copyable, Movable):
             p.model = obj[String("model")].as_string()
         if GenParams._chk(obj, String("prompt"), False, False, True, ignored):
             p.prompt = obj[String("prompt")].as_string()
+        if GenParams._chk(obj, String("prompt_raw"), False, False, True, ignored):
+            p.prompt_raw = obj[String("prompt_raw")].as_string()
         if GenParams._chk(obj, String("negative"), False, False, True, ignored):
             p.negative = obj[String("negative")].as_string()
         if GenParams._chk(obj, String("width"), True, False, False, ignored):
@@ -237,6 +255,10 @@ struct GenParams(Copyable, Movable):
             p.variation_strength = obj[String("variation_strength")].as_float()
         if GenParams._chk(obj, String("images"), True, False, False, ignored):
             p.images = obj[String("images")].as_int()
+        if GenParams._chk(obj, String("init_image"), False, False, True, ignored):
+            p.init_image = obj[String("init_image")].as_string()
+        if GenParams._chk(obj, String("creativity"), False, True, False, ignored):
+            p.creativity = obj[String("creativity")].as_float()
         if obj.contains(String("lora")):
             if not obj[String("lora")].is_array():
                 ignored.append(String("lora"))
@@ -326,6 +348,8 @@ struct GenParamStore(Movable):
     var m_variation_seed: Float32
     var m_variation_strength: Float32
     var m_images: Float32
+    var m_init_image: String           # P7: init image path (text mirror)
+    var m_creativity: Float32          # P7: 0..1 slider mirror
     var m_model_index: Int32      # into the screen's model-name list
     var m_sampler_index: Int32
     var m_scheduler_index: Int32
@@ -348,6 +372,8 @@ struct GenParamStore(Movable):
     var d_variation_seed: Bool
     var d_variation_strength: Bool
     var d_images: Bool
+    var d_init_image: Bool
+    var d_creativity: Bool
     var d_loras: Bool
 
     def __init__(out self):
@@ -365,6 +391,8 @@ struct GenParamStore(Movable):
         self.m_variation_seed = 0.0
         self.m_variation_strength = 0.0
         self.m_images = 1.0
+        self.m_init_image = String("")
+        self.m_creativity = 0.5
         self.m_model_index = 0
         self.m_sampler_index = 0
         self.m_scheduler_index = 0
@@ -383,6 +411,8 @@ struct GenParamStore(Movable):
         self.d_variation_seed = False
         self.d_variation_strength = False
         self.d_images = False
+        self.d_init_image = False
+        self.d_creativity = False
         self.d_loras = False
 
     def clear_dirty(mut self):
@@ -399,6 +429,8 @@ struct GenParamStore(Movable):
         self.d_variation_seed = False
         self.d_variation_strength = False
         self.d_images = False
+        self.d_init_image = False
+        self.d_creativity = False
         self.d_loras = False
 
     def any_dirty(self) -> Bool:
@@ -406,7 +438,8 @@ struct GenParamStore(Movable):
             self.d_model or self.d_prompt or self.d_negative or self.d_width
             or self.d_height or self.d_steps or self.d_cfg or self.d_seed
             or self.d_sampler or self.d_scheduler or self.d_variation_seed
-            or self.d_variation_strength or self.d_images or self.d_loras
+            or self.d_variation_strength or self.d_images
+            or self.d_init_image or self.d_creativity or self.d_loras
         )
 
     # ── H2: THE single dispatch point. Every param edit lands here. ──
@@ -449,7 +482,10 @@ struct GenParamStore(Movable):
         if self.d_model:
             p.model = self._name_at(model_names, self.m_model_index)
         if self.d_prompt:
+            # A user edit makes the prompt RAW again: the resolved/raw split
+            # is recomputed at submit (P9/P10).
             p.prompt = self.m_prompt.copy()
+            p.prompt_raw = String("")
         if self.d_negative:
             p.negative = self.m_negative.copy()
         if self.d_width:
@@ -472,6 +508,15 @@ struct GenParamStore(Movable):
             p.variation_strength = _round2(Float64(self.m_variation_strength))
         if self.d_images:
             p.images = Int(self.m_images) if Int(self.m_images) >= 1 else 1
+        if self.d_init_image:
+            p.init_image = self.m_init_image.copy()
+        if self.d_creativity:
+            var c = _round2(Float64(self.m_creativity))
+            if c < 0.0:
+                c = 0.0
+            if c > 1.0:
+                c = 1.0
+            p.creativity = c
         if self.d_loras:
             p.loras = List[GenLora]()
             for i in range(len(self.m_lora_indices)):
@@ -503,7 +548,12 @@ struct GenParamStore(Movable):
         text-edit engines)."""
         if self._seen_version == self.version:
             return False
-        self.m_prompt = self.params.prompt.copy()
+        # P9/P10: the prompt EDITOR shows the raw (with-syntax) prompt when
+        # one exists — the canonical `prompt` holds the resolved text.
+        if self.params.prompt_raw.byte_length() > 0:
+            self.m_prompt = self.params.prompt_raw.copy()
+        else:
+            self.m_prompt = self.params.prompt.copy()
         self.m_negative = self.params.negative.copy()
         self.m_width = Float32(self.params.width)
         self.m_height = Float32(self.params.height)
@@ -513,6 +563,8 @@ struct GenParamStore(Movable):
         self.m_variation_seed = Float32(self.params.variation_seed)
         self.m_variation_strength = Float32(self.params.variation_strength)
         self.m_images = Float32(self.params.images)
+        self.m_init_image = self.params.init_image.copy()
+        self.m_creativity = Float32(self.params.creativity)
         var mi = _find_option(model_names, self.params.model)
         if mi >= 0:
             self.m_model_index = mi

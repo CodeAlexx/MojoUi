@@ -46,6 +46,7 @@ from mojoui.widgets.basic import button, label, separator
 from mojoui.widgets.checkbox import checkbox
 from mojoui.widgets.slider import slider
 from mojoui.app.state import store_user_state, retrieve_user_state
+from mojoui.app.app import MojoApp
 
 
 comptime DPG_LABEL: Int = 0
@@ -251,3 +252,54 @@ def run[FrameFn: AnyType, //](mut ctx: DpgContext, frame_fn: FrameFn) raises:
 def active() raises -> UnsafePointer[DpgContext, MutAnyOrigin]:
     """Reach the live context from anywhere (e.g. inside your frame function)."""
     return retrieve_user_state[DpgContext]()
+
+
+# ===========================================================================
+# GUI runner for the canonical MojoApp handler (the real-callbacks path)
+# ---------------------------------------------------------------------------
+# DearPyGui stores a free function per widget and dispatches it on interaction.
+# Mojo 1.0.0b2 can't store a bare function value, BUT it CAN store a struct and
+# call its method — so MojoUI's app model is ONE handler object whose `on_event`
+# routes by tag (see mojoui/app/app.mojo). The SAME handler runs in text mode
+# (run_text / run_stdin) or here in GUI mode. `DpgApp(ctx, handler).run()` walks
+# the retained items each frame and dispatches every fired tag to
+# `handler.on_event` — true runtime callbacks, dispatched by Mojo (not C, not
+# comptime). Inside the handler, reach widget values via `app_ctx[YourHandler]()`.
+# ===========================================================================
+
+
+struct DpgApp[H: MojoApp](Movable):
+    """Couples a retained `DpgContext` with a `MojoApp` handler and runs the loop.
+
+    Stored whole in user_state so the frame callback can both render the items
+    AND dispatch fired tags to `handler.on_event` — true runtime callbacks.
+    """
+    var ctx: DpgContext
+    var handler: Self.H
+
+    def __init__(out self, var ctx: DpgContext, var handler: Self.H):
+        self.ctx = ctx^
+        self.handler = handler^
+
+    def run(mut self) raises:
+        store_user_state(UnsafePointer(to=self))
+        _ = Backend.init(self.ctx.width, self.ctx.height, self.ctx.title)
+        Backend.run_blocking(_dpg_app_frame[Self.H])
+
+
+def _dpg_app_frame[H: MojoApp]() -> None:
+    """Frame callback for `DpgApp.run`: render, then dispatch fired tags."""
+    var p = retrieve_user_state[DpgApp[H]]()
+    try:
+        p[].ctx.render_frame()
+        var evs = p[].ctx.take_events()
+        for i in range(len(evs)):
+            p[].handler.on_event(evs[i])
+    except e:
+        print("mojoui.dpg app frame error:", String(e))
+
+
+def app_ctx[H: MojoApp]() raises -> UnsafePointer[DpgContext, MutAnyOrigin]:
+    """From inside a handler, reach the live value store to get/set by tag."""
+    var p = retrieve_user_state[DpgApp[H]]()
+    return UnsafePointer(to=p[].ctx)
