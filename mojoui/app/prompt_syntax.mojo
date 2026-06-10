@@ -11,7 +11,9 @@ genparams as `prompt_raw`, the resolved prompt goes in `prompt`):
                       request (weight optional, default 1.0); the tag is
                       REMOVED from the resolved prompt. The caller merges the
                       extraction into the UI LoRA stack (dedup by name — the
-                      UI stack wins on conflict).
+                      UI stack wins on conflict). The weight is CLAMPED to the
+                      daemon's accepted range [-10, 10] (F1) with a soft note
+                      when out of range, so the submit never 422s on weight.
   <random:a|b|c>    — uniform pick, seeded by the JOB seed (splitmix64):
                       deterministic per seed, replacement at submit. Nested
                       <random:> inside an option resolves on the next pass
@@ -268,6 +270,23 @@ def _extract_loras(
                 out.append(b[i])
                 i += 1
             continue
+        # F1 (phase-3 skeptic): clamp the LoRA weight to the daemon's accepted
+        # range [-10, 10] (serenity_daemon parse_generate _opt_num lora.weight
+        # bounds). An out-of-range weight would otherwise reach /v1/generate and
+        # come back as a generic 422; clamp + note here so the submit succeeds
+        # with a sane weight and the user is told it was adjusted.
+        if weight < -10.0:
+            notes.append(
+                String("<lora:") + name + String(":") + String(weight)
+                + String("> weight clamped to -10 (daemon range [-10,10])")
+            )
+            weight = Float64(-10.0)
+        elif weight > 10.0:
+            notes.append(
+                String("<lora:") + name + String(":") + String(weight)
+                + String("> weight clamped to 10 (daemon range [-10,10])")
+            )
+            weight = Float64(10.0)
         loras.append(PromptLora(name^, weight))
         # collapse the seam: tag removal must not leave a double space
         i = close + 1
@@ -488,8 +507,31 @@ def selftest_prompt_syntax() raises:
         print("[selftest-syntax] FAIL 13 weight round-trip: '", r13.resolved, "'")
         fails += 1
 
+    # 14. F1: lora weight out of the daemon range [-10,10] is CLAMPED + noted
+    # (not passed through to a 422). Over-range positive -> 10.
+    var r14 = resolve_prompt(String("a <lora:big:25.0> castle"), 1)
+    if r14.resolved != String("a castle") or len(r14.loras) != 1 \
+            or r14.loras[0].weight != 10.0 or len(r14.notes) == 0:
+        print("[selftest-syntax] FAIL 14 lora clamp high: '", r14.resolved,
+              "' w=", r14.loras[0].weight if len(r14.loras) > 0 else -999.0)
+        fails += 1
+    # under-range negative -> -10
+    var r14b = resolve_prompt(String("a <lora:neg:-12.5> wall"), 1)
+    if r14b.resolved != String("a wall") or len(r14b.loras) != 1 \
+            or r14b.loras[0].weight != -10.0 or len(r14b.notes) == 0:
+        print("[selftest-syntax] FAIL 14b lora clamp low: '", r14b.resolved,
+              "' w=", r14b.loras[0].weight if len(r14b.loras) > 0 else -999.0)
+        fails += 1
+    # in-range weight is untouched, NO clamp note
+    var r14c = resolve_prompt(String("a <lora:ok:2.5> tower"), 1)
+    if r14c.resolved != String("a tower") or len(r14c.loras) != 1 \
+            or r14c.loras[0].weight != 2.5 or len(r14c.notes) != 0:
+        print("[selftest-syntax] FAIL 14c in-range untouched: '", r14c.resolved,
+              "' notes=", len(r14c.notes))
+        fails += 1
+
     if fails > 0:
         raise Error(
             String("selftest-syntax: ") + String(fails) + String(" case(s) FAILED")
         )
-    print("[selftest-syntax] ALL 13 CASES PASS")
+    print("[selftest-syntax] ALL 14 CASES PASS (incl. F1 lora-weight clamp)")
