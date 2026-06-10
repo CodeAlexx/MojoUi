@@ -299,7 +299,29 @@ def _dpg_app_frame[H: MojoApp]() -> None:
         print("mojoui.dpg app frame error:", String(e))
 
 
+def is_gui_live[H: MojoApp]() raises -> Bool:
+    """True iff a `DpgApp[H]` is currently running (i.e. GUI mode).
+
+    The SAFE guard for a handler whose `on_event` also runs in text mode: check
+    this before touching `app_ctx`. When no GUI app is stored, the user_state
+    slot is NULL (measured: `retrieve_user_state` returns address 0), and
+    dereferencing it would segfault — this lets you avoid that entirely.
+    """
+    return Int(retrieve_user_state[DpgApp[H]]()) != 0
+
+
 def app_ctx[H: MojoApp]() raises -> UnsafePointer[DpgContext, MutAnyOrigin]:
-    """From inside a handler, reach the live value store to get/set by tag."""
+    """From inside a handler, reach the live value store to get/set by tag.
+
+    RAISES (does not segfault) when no GUI `DpgApp[H]` is running — e.g. the
+    same handler invoked in text mode. Either guard the call with `is_gui_live`
+    or wrap it in try/except; both are safe because the NULL slot is checked
+    BEFORE any dereference.
+    """
     var p = retrieve_user_state[DpgApp[H]]()
+    if Int(p) == 0:
+        raise Error(
+            "app_ctx: no GUI DpgApp is running (text mode?). "
+            "Guard with is_gui_live[H]() before calling app_ctx."
+        )
     return UnsafePointer(to=p[].ctx)

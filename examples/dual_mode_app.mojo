@@ -17,7 +17,7 @@ mode — same dispatch, same state (`self.total`).
 
 from std.sys import argv
 from mojoui.app.app import MojoApp, run_stdin
-from mojoui.dpg import DpgContext, DpgApp, app_ctx
+from mojoui.dpg import DpgContext, DpgApp, app_ctx, is_gui_live
 
 
 struct Calc(MojoApp):
@@ -28,34 +28,29 @@ struct Calc(MojoApp):
 
     def on_event(mut self, tag: String) raises -> None:
         # GUI tags (no spaces) and text commands (verb + number) share one path.
-        if tag == "inc":                       # GUI button
+        if tag == "inc":                         # GUI button
             self.total += 1.0
-            self._sync_gui()
-        elif tag == "reset" or tag == "clear":  # GUI button / text cmd
+        elif tag == "reset" or tag == "clear":   # GUI button / text cmd
             self.total = 0.0
-            self._sync_gui_or_print()
         elif tag == "show":                      # text cmd
-            print("total =", self.total)
+            pass
         elif tag.startswith("add "):             # text cmd: "add 5"
             self.total += _num(tag, 4)
-            print("total =", self.total)
         elif tag.startswith("sub "):             # text cmd: "sub 2"
             self.total -= _num(tag, 4)
-            print("total =", self.total)
         else:
             print("? ", tag)
+            return
+        self._report()
 
-    def _sync_gui(self) raises:
-        var c = app_ctx[Calc]()
-        c[].set_value_float(String("total"), self.total)
-        c[].set_value_str(String("status"), String("total=") + String(self.total))
-
-    def _sync_gui_or_print(self) raises:
-        # Reset is reachable from both modes; update the GUI if one is live,
-        # otherwise just report (text mode has no DpgApp in user_state).
-        try:
-            self._sync_gui()
-        except:
+    def _report(self) raises -> None:
+        # ONE mode-safe sink: update GUI widgets if a window is live, else print.
+        # is_gui_live guards the app_ctx deref so text mode never faults.
+        if is_gui_live[Calc]():
+            var c = app_ctx[Calc]()
+            c[].set_value_float(String("total"), self.total)
+            c[].set_value_str(String("status"), String("total=") + String(self.total))
+        else:
             print("total =", self.total)
 
 

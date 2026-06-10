@@ -73,6 +73,87 @@ pixi run test-backend   # render/backend.mojo smoke (color packing + tessellatio
 
 The build assumes Linux with OpenGL 3.3 (`-DSOKOL_GLCORE`). Other backends (Metal, D3D11, Vulkan, WebGPU) compile by changing the SOKOL define in `c_floor/Makefile` — not yet validated.
 
+## App model — one handler, text **or** GUI
+
+MojoUI apps are written as **one handler struct with a single dispatch method**,
+and the same handler runs either as a terminal program or a GUI window — you pick
+the runner, not the logic. This is also the DearPyGui-style façade (`mojoui/dpg.mojo`):
+build a tagged widget tree once, read/write widget state by tag, and react to
+interaction through the handler.
+
+```mojo
+from mojoui.app.app import MojoApp, run_text, run_stdin
+from mojoui.dpg import DpgContext, DpgApp, app_ctx, is_gui_live
+
+struct Calc(MojoApp):
+    var total: Float32
+    def __init__(out self): self.total = 0.0
+
+    # The whole app's logic — switch on the tag (a widget tag in GUI mode,
+    # a command line in text mode). Call your own helper methods freely;
+    # "one method" means one *dispatch entry point*, not one function total.
+    def on_event(mut self, tag: String) raises -> None:
+        if tag == "inc": self.total += 1.0
+        elif tag == "reset" or tag == "clear": self.total = 0.0
+        elif tag.startswith("add "): self.total += atof(tag[4:])
+        self._report()
+
+    def _report(self) raises -> None:
+        if is_gui_live[Calc]():                 # GUI live? update widgets
+            var c = app_ctx[Calc]()
+            c[].set_value_float(String("total"), self.total)
+        else:                                   # text mode: just print
+            print("total =", self.total)
+
+def main() raises:
+    # TEXT mode (headless, fully runnable):
+    var calc = Calc(); run_stdin(calc)          # or run_text(calc, [..cmds..])
+
+    # GUI mode (needs a display):
+    # var ctx = DpgContext(String("Calc"), 640, 360)
+    # ctx.add_button(String("inc"), String("+1"))
+    # ctx.add_text(String("total"), String("0"))
+    # DpgApp(ctx^, Calc()).run()
+```
+
+### Why one method (the language constraint)
+Mojo 1.0.0b2 cannot store a bare function value (no per-widget function-pointer
+callbacks): a `def`/`fn` value is only a compile-time parameter or a value handed
+to C — never a Mojo-callable struct field. It **can** store a struct and call its
+method. So MojoUI dispatches through one handler object (`trait MojoApp`) instead
+of N free callbacks — same capability, organized as one `on_event` switch.
+
+### Text-mode runners (`mojoui/app/app.mojo`)
+- `run_text(app, cmds)` — dispatch a scripted `List[String]` of commands (deterministic, headless).
+- `run_stdin(app)` — read stdin, dispatch each non-empty line until `quit`/`exit`/EOF.
+  (Reads the whole buffer at once: `input()` raises on its 2nd piped read in this toolchain.)
+
+### GUI runner (`mojoui/dpg.mojo`)
+- `DpgApp(ctx, handler).run()` — walks the retained items each frame and dispatches
+  every fired widget tag to `handler.on_event` (true runtime callbacks).
+- Retained builders: `add_button` / `add_slider_float` / `add_checkbox` / `add_text` / `add_separator`.
+- Value store by tag: `get_value_float`/`bool`/`str` + `set_value_*`.
+
+### Mode-safety contract (no segfaults)
+GUI-only accessors must not be dereferenced in text mode, where no GUI app is
+stored (`retrieve_user_state` returns a NULL slot — dereferencing it would
+segfault). Two guards make this safe:
+- `is_gui_live[H]()` — `True` only when a `DpgApp[H]` is running; check it before `app_ctx`.
+- `app_ctx[H]()` — null-checks the slot and **raises** (does not fault) when no GUI
+  app is live, so an unguarded call in text mode is catchable, not a crash.
+
+### Examples
+```bash
+# build-then-run (the JIT can't dlopen the C floor)
+pixi run mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm \
+  examples/dual_mode_app.mojo -o /tmp/dual
+printf 'add 5\nadd 3\nsub 2\nshow\nquit\n' | /tmp/dual   # text mode (runs headless)
+LD_LIBRARY_PATH=. /tmp/dual gui                          # GUI mode (needs a display)
+```
+- `examples/dual_mode_app.mojo` — one `Calc` handler, text **and** GUI.
+- `examples/dpg_callbacks_demo.mojo` — handler callbacks per widget tag.
+- `examples/dpg_demo.mojo` — the events-poll variant (`consume_event`/`take_events`).
+
 ## License
 
 MIT - see [LICENSE](LICENSE).
