@@ -295,6 +295,10 @@ struct Context(Movable):
         self.window_rect = Rect(0.0, 0.0, window_size.x, window_size.y)
         # 2. Sample current input state from C floor.
         self.input.poll()
+        # 2b. Drain the C text-input buffer ONCE per frame (unconditional, even
+        # when no text widget is focused) so typed chars never accumulate and
+        # dump into the next focused field. Widgets read it via consume_text().
+        self.input.prime_frame_text()
         # 3. Thread mouse pos + LMB edges + Tab/Shift state into control
         # state. Vec2 is Copyable-not-ImplicitlyCopyable so the read needs
         # `.copy()` — see Mojo implementation notes "Copyable ≠ ImplicitlyCopyable".

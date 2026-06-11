@@ -137,6 +137,10 @@ struct TextEditState(Movable):
     var row_count_per_page: Int32
     var initialized: Bool
     var undostate: UndoState
+    var scroll_x: Float32
+    """Horizontal scroll offset (px) for single-line fields, persisted across
+    frames by the widget so the caret stays inside the field box when the text
+    is wider than the field. UI-only; the editing engine ignores it."""
 
     def __init__(out self, single_line: Bool = True):
         self.cursor = 0
@@ -149,6 +153,7 @@ struct TextEditState(Movable):
         self.row_count_per_page = 0
         self.initialized = True
         self.undostate = UndoState()
+        self.scroll_x = 0.0
 
     def clear(mut self):
         """Reset to a known-good default (stb stb_textedit_clear_state)."""
@@ -161,6 +166,7 @@ struct TextEditState(Movable):
         self.row_count_per_page = 0
         self.initialized = True
         self.undostate.clear()
+        self.scroll_x = 0.0
 
 
 # ============================================================================

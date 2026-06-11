@@ -218,6 +218,19 @@ struct InputState(Copyable, Movable):
     what keeps the JIT from materialising `mojoui_get_input_text` / the other
     text-input symbols in unit tests. Toggled via `disable_ffi_text()` /
     `enable_ffi_text()`."""
+    var frame_text: String
+    """Text drained from the C floor ONCE per live frame by
+    `prime_frame_text()` (called from `Context.begin_frame` after `poll()`).
+    `consume_text()` returns this first. Priming every frame — even when no
+    text widget is focused — empties the C buffer unconditionally, so
+    characters typed while unfocused are discarded instead of accumulating
+    and dumping into the next focused field (the 'adds extra chars' bug)."""
+    var held_frames: InlineArray[Int32, _KEY_SLOTS]
+    """Per-key consecutive-frames-held counter, advanced in `poll()`: +1 each
+    frame a key is down, reset to 0 on release. Drives `key_repeat()` so
+    editing keys (backspace/delete/arrows) auto-repeat when held — the
+    edge-only `key_pressed` can't, because X11 detectable auto-repeat keeps
+    the level at 1 with no new rising edges."""
 
     def __init__(out self):
         """All-zero initial state.
@@ -240,6 +253,8 @@ struct InputState(Copyable, Movable):
         self.prev_keys_held = InlineArray[Bool, _KEY_SLOTS](fill=False)
         self.pending_text = String("")
         self._use_ffi_text = True
+        self.frame_text = String("")
+        self.held_frames = InlineArray[Int32, _KEY_SLOTS](fill=0)
 
     # ----- Test seam: bypass FFI text path entirely (c24) ---------------
 
@@ -305,8 +320,44 @@ struct InputState(Copyable, Movable):
             var prev = self.prev_keys_held[i]
             self.keys[i] = _compute_edge(prev, cur_held)
             self.prev_keys_held[i] = cur_held
+            # Consecutive-frames-held counter for key_repeat().
+            if cur_held:
+                self.held_frames[i] = self.held_frames[i] + 1
+            else:
+                self.held_frames[i] = 0
 
     # ----- Text input drainage -----------------------------------------
+
+    def prime_frame_text(mut self):
+        """Drain the C-floor text-input buffer into `frame_text`, ONCE per
+        live frame. Called by `Context.begin_frame` right after `poll()`.
+
+        This is the unconditional per-frame drain that fixes character
+        accumulation: the C `g_input_text_buf` is emptied EVERY frame, so any
+        CHAR events delivered while no text widget is focused (before first
+        focus, during focus gaps from clicking buttons/tabs, or frames where
+        Ctrl is briefly held) are discarded rather than lingering and being
+        dumped into the next focused field.
+
+        FFI-gated: when `_use_ffi_text` is False (headless tests that called
+        `disable_ffi_text()`, and the `begin_frame_no_input` path which never
+        primes), this is a no-op so the JIT never materialises the text FFI
+        symbols. In that mode tests stage input via `pending_text` instead.
+        """
+        if not self._use_ffi_text:
+            return
+        var n = _ffi_input_text_length()
+        if n <= 0:
+            _ffi_clear_input_text()
+            self.frame_text = String("")
+            return
+        var ptr_u8 = _ffi_get_input_text().bitcast[UInt8]()
+        var n_int = Int(n)
+        var bytes = List[UInt8](capacity=n_int)
+        for i in range(n_int):
+            bytes.append(ptr_u8[i])
+        self.frame_text = String(unsafe_from_utf8=bytes)
+        _ffi_clear_input_text()
 
     def consume_text(mut self) raises -> String:
         """Drain newly-typed UTF-8 text; return as `String`.
@@ -327,7 +378,19 @@ struct InputState(Copyable, Movable):
 
         Returns "" when nothing was typed; always clears whichever channel
         it drained so the next frame starts fresh.
+
+        Drain priority (highest first):
+          0. `frame_text` — the per-frame drain primed by `prime_frame_text()`
+             in `begin_frame` (the live production path). Returned + cleared.
+          1. `pending_text` — test-injection / staged-feed path.
+          2. FFI fall-through (only when `_use_ffi_text`). After a prime this
+             is empty; kept for direct callers that don't go through
+             begin_frame.
         """
+        if self.frame_text.byte_length() > 0:
+            var primed = self.frame_text.copy()
+            self.frame_text = String("")
+            return primed
         if self.pending_text.byte_length() > 0:
             var staged = self.pending_text.copy()
             self.pending_text = String("")
@@ -383,6 +446,29 @@ struct InputState(Copyable, Movable):
     def key_released(self, mojoui_key: Int32) -> Bool:
         """True if `mojoui_key` (MOJOUI_KEY_*) transitioned up THIS FRAME."""
         return self.keys[Int(mojoui_key)].released
+
+    @always_inline
+    def key_repeat(
+        self,
+        mojoui_key: Int32,
+        delay_frames: Int32 = 24,
+        rate_frames: Int32 = 3,
+    ) -> Bool:
+        """True on the initial press edge AND on periodic repeats while the
+        key stays held past `delay_frames` (one repeat every `rate_frames`
+        frames thereafter). For editing keys (backspace/delete/arrows) so they
+        auto-repeat when held — `key_pressed` alone fires only the single
+        rising edge, which under X11 detectable auto-repeat never recurs
+        while held. Frame-count based (≈24 frames ≈0.4 s delay, ≈3 frames
+        ≈20 Hz at 60 fps); no wall-clock needed since `poll()` has none."""
+        var idx = Int(mojoui_key)
+        if self.keys[idx].pressed:
+            return True
+        if self.keys[idx].held and rate_frames > 0:
+            var hf = self.held_frames[idx]
+            if hf > delay_frames and ((hf - delay_frames) % rate_frames) == 0:
+                return True
+        return False
 
 
 # ============================================================

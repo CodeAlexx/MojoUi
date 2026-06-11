@@ -163,13 +163,15 @@ def _handle_keys(mut ctx: Context, mut state: MultiLineState):
             return
 
     # ---- Navigation + editing keys ----
-    if ctx.input.key_pressed(MOJOUI_KEY_LEFT):
+    # Movement + Backspace/Delete auto-repeat while held (key_repeat);
+    # Home/End/Return stay edge-only.
+    if ctx.input.key_repeat(MOJOUI_KEY_LEFT):
         ml_move_left(state, shift)
-    if ctx.input.key_pressed(MOJOUI_KEY_RIGHT):
+    if ctx.input.key_repeat(MOJOUI_KEY_RIGHT):
         ml_move_right(state, shift)
-    if ctx.input.key_pressed(MOJOUI_KEY_UP):
+    if ctx.input.key_repeat(MOJOUI_KEY_UP):
         ml_move_up(state, shift)
-    if ctx.input.key_pressed(MOJOUI_KEY_DOWN):
+    if ctx.input.key_repeat(MOJOUI_KEY_DOWN):
         ml_move_down(state, shift)
     if ctx.input.key_pressed(MOJOUI_KEY_HOME):
         if ctrl:
@@ -183,9 +185,9 @@ def _handle_keys(mut ctx: Context, mut state: MultiLineState):
             ml_move_end(state, shift)
     if ctx.input.key_pressed(MOJOUI_KEY_RETURN):
         ml_insert_newline(state)
-    if ctx.input.key_pressed(MOJOUI_KEY_BACKSPACE):
+    if ctx.input.key_repeat(MOJOUI_KEY_BACKSPACE):
         ml_backspace(state)
-    if ctx.input.key_pressed(MOJOUI_KEY_DELETE):
+    if ctx.input.key_repeat(MOJOUI_KEY_DELETE):
         ml_delete(state)
 
 

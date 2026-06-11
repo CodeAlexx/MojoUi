@@ -122,6 +122,9 @@ test-text-edit = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -
 test-combobox = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_combobox.mojo"
 # text_area drives consume_text() (FFI) like text_edit, so build-then-run.
 test-text-area = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm tests/widgets/test_text_area.mojo -o /tmp/mojoui_test_ta && LD_LIBRARY_PATH=. /tmp/mojoui_test_ta", depends-on = ["build-c"] }
+# Multi-frame repro guarding the 3 text-edit fixes: per-frame text drain (no
+# char accumulation), key auto-repeat, caret-following h-scroll. Build-then-run.
+test-text-edit-repro = { cmd = "mojo build -I . -Xlinker -L. -Xlinker -lmojoui_floor -Xlinker -lm tests/widgets/test_text_edit_repro.mojo -o /tmp/mojoui_te_repro && LD_LIBRARY_PATH=. /tmp/mojoui_te_repro", depends-on = ["build-c"] }
 test-multiline-edit = "LD_LIBRARY_PATH=. mojo run -I . tests/core/test_multiline_edit.mojo"
 test-window-panel = "LD_LIBRARY_PATH=. mojo run -I . tests/widgets/test_window_panel.mojo"
 test-port = "LD_LIBRARY_PATH=. mojo run -I . tests/nodes/test_port.mojo"

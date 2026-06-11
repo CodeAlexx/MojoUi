@@ -185,19 +185,22 @@ def _handle_keys(mut ctx: Context, mut buffer: String, mut state: TextEditState)
             return
 
     # ---- Navigation + editing keys ----
-    if ctx.input.key_pressed(MOJOUI_KEY_LEFT):
+    # Movement + Backspace/Delete use key_repeat (press edge + auto-repeat
+    # while held); Home/End stay edge-only (no repeat needed for a one-shot
+    # jump).
+    if ctx.input.key_repeat(MOJOUI_KEY_LEFT):
         if ctrl:
             te_key(buffer, state, TE_K_WORDLEFT | shift_bit)
         else:
             te_key(buffer, state, TE_K_LEFT | shift_bit)
-    if ctx.input.key_pressed(MOJOUI_KEY_RIGHT):
+    if ctx.input.key_repeat(MOJOUI_KEY_RIGHT):
         if ctrl:
             te_key(buffer, state, TE_K_WORDRIGHT | shift_bit)
         else:
             te_key(buffer, state, TE_K_RIGHT | shift_bit)
-    if ctx.input.key_pressed(MOJOUI_KEY_UP):
+    if ctx.input.key_repeat(MOJOUI_KEY_UP):
         te_key(buffer, state, TE_K_UP | shift_bit)
-    if ctx.input.key_pressed(MOJOUI_KEY_DOWN):
+    if ctx.input.key_repeat(MOJOUI_KEY_DOWN):
         te_key(buffer, state, TE_K_DOWN | shift_bit)
     if ctx.input.key_pressed(MOJOUI_KEY_HOME):
         if ctrl:
@@ -209,9 +212,9 @@ def _handle_keys(mut ctx: Context, mut buffer: String, mut state: TextEditState)
             te_key(buffer, state, TE_K_TEXTEND | shift_bit)
         else:
             te_key(buffer, state, TE_K_LINEEND | shift_bit)
-    if ctx.input.key_pressed(MOJOUI_KEY_BACKSPACE):
+    if ctx.input.key_repeat(MOJOUI_KEY_BACKSPACE):
         te_key(buffer, state, TE_K_BACKSPACE)
-    if ctx.input.key_pressed(MOJOUI_KEY_DELETE):
+    if ctx.input.key_repeat(MOJOUI_KEY_DELETE):
         te_key(buffer, state, TE_K_DELETE)
 
 
@@ -251,12 +254,12 @@ def text_edit(
     # engine as a logical x with a unit advance (so te_locate_coord rounds to
     # that exact column). Headless (font_id == 0) falls back to uniform.
     if (flags & CTRL_PRESSED) != 0:
-        var local_x = ctx.control.mouse_pos.x - origin_x
+        var local_x = ctx.control.mouse_pos.x - origin_x + state.scroll_x
         var col = _locate_col(ctx, buffer, local_x, advance)
         te_click(buffer, state, col, 1.0)
     elif (flags & CTRL_ACTIVE) != 0 and ctx.input.mouse_held(MOJOUI_BTN_LEFT):
         # Dragging with the button down inside an active field.
-        var local_x = ctx.control.mouse_pos.x - origin_x
+        var local_x = ctx.control.mouse_pos.x - origin_x + state.scroll_x
         var col = _locate_col(ctx, buffer, local_x, advance)
         te_drag(buffer, state, col, 1.0)
 
@@ -290,6 +293,33 @@ def text_edit(
         var glyph_h = Float32(ctx.theme.font_size_pt)
         var content_y = rect.y + (rect.h - glyph_h) * 0.5
 
+        # ---- Horizontal scroll: keep the caret inside the field box when the
+        # text is wider than the field. scroll_x persists in `state`. caret_rel
+        # is the caret's x relative to the text start (x=0 at origin).
+        var pad = Float32(ctx.theme.padding)
+        var field_w = rect.w - 2.0 * pad
+        if field_w < 1.0:
+            field_w = 1.0
+        var caret_rel = _prefix_x(ctx, buffer, state.cursor, advance)
+        if (flags & CTRL_FOCUSED) != 0:
+            # Chase the caret: scroll right when it passes the right edge,
+            # left when it passes the left edge.
+            if caret_rel - state.scroll_x > field_w:
+                state.scroll_x = caret_rel - field_w
+            if caret_rel - state.scroll_x < 0.0:
+                state.scroll_x = caret_rel
+        # Never scroll past the start; if the whole text fits, pin to 0.
+        var full_w = _prefix_x(ctx, buffer, te_stringlen(buffer), advance)
+        if full_w <= field_w:
+            state.scroll_x = 0.0
+        if state.scroll_x < 0.0:
+            state.scroll_x = 0.0
+
+        # Clip text + caret + selection to the field's content box so scrolled
+        # glyphs don't spill past the border. Restored to the full window
+        # afterward (same convention as scroll_area).
+        ctx.draw_clip(Rect(origin_x, rect.y, field_w, rect.h))
+
         # Selection highlight (behind text). Drawn only when focused so an
         # unfocused field doesn't show a stale highlight.
         if (flags & CTRL_FOCUSED) != 0 and te_has_selection(state):
@@ -298,15 +328,15 @@ def text_edit(
             if hi < lo:
                 lo = state.select_end
                 hi = state.select_start
-            var sx0 = origin_x + _prefix_x(ctx, buffer, lo, advance)
-            var sx1 = origin_x + _prefix_x(ctx, buffer, hi, advance)
+            var sx0 = origin_x + _prefix_x(ctx, buffer, lo, advance) - state.scroll_x
+            var sx1 = origin_x + _prefix_x(ctx, buffer, hi, advance) - state.scroll_x
             ctx.draw_rect(
                 Rect(sx0, content_y, sx1 - sx0, glyph_h),
                 ctx.theme.active_bg.copy(),
             )
 
         var text_pos = Vec2(
-            origin_x,
+            origin_x - state.scroll_x,
             rect.y + (rect.h + glyph_h * 0.7) * 0.5,
         )
         ctx.draw_text(
@@ -319,11 +349,14 @@ def text_edit(
 
         # Caret at the cursor byte offset (focused only).
         if (flags & CTRL_FOCUSED) != 0 and ctx.caret_visible:
-            var caret_x = origin_x + _prefix_x(ctx, buffer, state.cursor, advance)
+            var caret_x = origin_x + caret_rel - state.scroll_x
             ctx.draw_rect(
                 Rect(caret_x, content_y, 1.0, glyph_h),
                 ctx.theme.primary.copy(),
             )
+
+        # Restore clip so following widgets aren't clipped to this field.
+        ctx.draw_clip(ctx.window_rect.copy())
 
     return buffer != before
 
