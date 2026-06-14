@@ -37,7 +37,13 @@ from mojoui.app.daemon_client import (
     daemon_generate,
     daemon_health,
     daemon_jobs,
+    _post,
+    _opt_str,
 )
+from mojoui.app.prompt_syntax import _parse_float, _trim
+from json.parser import loads
+from json.serialize import dumps
+from json.value import JSONValue
 from mojoui.app.gen_history import absolutize_output_path
 from mojoui.app.workflow_executor import execute_workflow_with_device
 from mojoui.app.workflow_types import WorkflowDeviceConfig
@@ -1047,6 +1053,167 @@ def daemon_submit_params(
         rt.last_error = String("daemon submit failed: ") + String(e)
         print("[daemon-bridge]", rt.last_error)
         return False
+
+
+def daemon_submit_workflow(
+    mut state: InferenceState, mut rt: GraphUiRuntime,
+    workflow_json: String, width: Int, height: Int, steps: Int,
+) -> Bool:
+    """POST one authored workflow graph to /v1/generate. The daemon executes
+    the graph module and returns the same job/progress contract as flat params."""
+    var body = String("{\"workflow\":") + workflow_json + String("}")
+    try:
+        var job_id = daemon_generate(body)
+        rt.daemon_submitted.append(job_id.copy())
+        rt.daemon_submitted_miss.append(0)
+        rt.last_submit_json = body.copy()
+        rt.submit_width = width
+        rt.submit_height = height
+        rt.route_label = String("daemon-workflow")
+        rt.last_status = String("daemon workflow ") + job_id
+        rt.last_error = String("")
+        state.generating = True
+        state.has_running = True
+        state.current_step = 0
+        state.total_steps = Int32(steps)
+        state.result_ready = False
+        print("[daemon-bridge] submitted workflow", job_id, "->", body)
+        return True
+    except e:
+        rt.daemon_ok = False
+        rt.last_error = String("daemon workflow submit failed: ") + String(e)
+        print("[daemon-bridge]", rt.last_error)
+        return False
+
+
+def _grid_axis_is_numeric(axis: String) -> Bool:
+    """seed/cfg/steps sweep over numbers; sampler/scheduler over strings."""
+    return axis == String("seed") or axis == String("cfg") or axis == String("steps")
+
+
+def _grid_values_array(axis: String, values_csv: String) raises -> JSONValue:
+    """Parse a comma-separated sweep list into a JSON array. Numeric axes
+    (seed/cfg/steps) yield JSON numbers; string axes (sampler/scheduler)
+    yield quoted strings. Blank entries (e.g. trailing comma) are skipped.
+    A token that should be numeric but won't parse is silently skipped (the
+    empty-array guard in the caller then reports a clear error)."""
+    var arr = JSONValue.new_array()
+    var numeric = _grid_axis_is_numeric(axis)
+    var token = String("")
+    var n = values_csv.byte_length()
+    var src = values_csv.as_bytes()
+    for i in range(n + 1):
+        # split on ',' — flush the accumulated token at each comma and at end
+        var at_sep = i == n or src[i] == 44  # ','
+        if at_sep:
+            var t = _trim(token)
+            if t.byte_length() > 0:
+                if numeric:
+                    var ok = False
+                    var v = _parse_float(t, ok)
+                    if ok:
+                        arr.append(JSONValue.from_float(v))
+                else:
+                    arr.append(JSONValue.from_string(t))
+            token = String("")
+        else:
+            token += chr(Int(src[i]))
+    return arr^
+
+
+def daemon_submit_grid(
+    mut rt: GraphUiRuntime, axis: String, values_csv: String,
+    base_genparams_json: String,
+) raises -> String:
+    """POST /v1/grid: sweep `axis` over the comma-separated `values_csv`,
+    reusing the canonical genparams body (`base_genparams_json`, the same
+    `GenParams.to_json()` the Generate path uses) for every fixed field.
+
+    Builds the flat grid body the server expects — axis, values[], plus the
+    generation fields (model/prompt/negative/width/height/steps/seed/sampler/
+    scheduler/cfg) lifted from the base genparams, dropping the field that the
+    axis sweeps. Returns the absolute grid-PNG `path` on success, or "" on
+    error (with rt.last_error set to the server detail / failure reason)."""
+    try:
+        var base = loads(base_genparams_json)
+        if not base.is_object():
+            rt.last_error = String("grid: base genparams not a JSON object")
+            return String("")
+        var values = _grid_values_array(axis, values_csv)
+        if values.length() == 0:
+            rt.last_error = String("grid: no values parsed from '") + values_csv + String("'")
+            return String("")
+
+        var body = JSONValue.new_object()
+        body.set("axis", JSONValue.from_string(axis))
+        body.set("values", values^)
+        # Lift the fixed generation fields from the base genparams, skipping
+        # the one the axis sweeps (the server's per-cell value overrides it).
+        _grid_copy_str(base, body, String("model"), axis)
+        _grid_copy_str(base, body, String("prompt"), axis)
+        _grid_copy_str(base, body, String("negative"), axis)
+        _grid_copy_int(base, body, String("width"), axis)
+        _grid_copy_int(base, body, String("height"), axis)
+        _grid_copy_int(base, body, String("steps"), axis)
+        _grid_copy_int(base, body, String("seed"), axis)
+        _grid_copy_num(base, body, String("cfg"), axis)
+        _grid_copy_str(base, body, String("sampler"), axis)
+        _grid_copy_str(base, body, String("scheduler"), axis)
+
+        var req = dumps(body)
+        rt.last_submit_json = req.copy()
+        var resp = _post(String("/v1/grid"), req, 600000)
+        var obj = loads(resp.text())
+        if resp.status != 200:
+            var detail = String("")
+            if obj.is_object():
+                detail = _opt_str(obj, String("detail"))
+            rt.last_error = (
+                String("daemon /v1/grid -> HTTP ") + String(resp.status)
+                + String(": ") + detail
+            )
+            print("[daemon-bridge]", rt.last_error)
+            return String("")
+        if not obj.is_object():
+            rt.last_error = String("daemon /v1/grid: malformed response")
+            return String("")
+        var path = _opt_str(obj, String("path"))
+        rt.last_error = String("")
+        rt.last_status = String("grid ") + _opt_str(obj, String("grid_id"))
+        print("[daemon-bridge] grid done ->", path)
+        return path^
+    except e:
+        rt.daemon_ok = False
+        rt.last_error = String("daemon grid submit failed: ") + String(e)
+        print("[daemon-bridge]", rt.last_error)
+        return String("")
+
+
+def _grid_copy_str(
+    base: JSONValue, mut out: JSONValue, key: String, axis: String
+) raises:
+    if key == axis:
+        return
+    if base.contains(key) and base[key].is_string():
+        out.set(key, JSONValue.from_string(base[key].as_string()))
+
+
+def _grid_copy_int(
+    base: JSONValue, mut out: JSONValue, key: String, axis: String
+) raises:
+    if key == axis:
+        return
+    if base.contains(key) and base[key].is_int():
+        out.set(key, JSONValue.from_int(base[key].as_int()))
+
+
+def _grid_copy_num(
+    base: JSONValue, mut out: JSONValue, key: String, axis: String
+) raises:
+    if key == axis:
+        return
+    if base.contains(key) and base[key].is_number():
+        out.set(key, JSONValue.from_float(base[key].as_float()))
 
 
 def daemon_cancel_submitted(mut state: InferenceState, mut rt: GraphUiRuntime):
