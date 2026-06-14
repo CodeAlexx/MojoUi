@@ -59,6 +59,9 @@ struct GenParams(Copyable, Movable):
     var variation_strength: Float64
     var images: Int               # P6: images-count
     var init_image: String        # P7: img2img init image path ("" = txt2img)
+    var mask_image: String        # inpaint: mask PNG path ("" = no mask)
+    var mask_channel: String      # inpaint: which channel is the mask
+                                  # (serializes under key "lanpaint_mask_channel")
     var creativity: Float64       # P7: 0..1 — denoise start sigma fraction
     var hires_scale: Float64      # hires-fix: >1.0 enables the 2-pass refine
     var hires_denoise: Float64    # hires-fix: refine-pass creativity 0..1
@@ -80,6 +83,8 @@ struct GenParams(Copyable, Movable):
         self.variation_strength = 0.0
         self.images = 1
         self.init_image = String("")
+        self.mask_image = String("")
+        self.mask_channel = String("load_image_mask")
         self.creativity = 0.5
         self.hires_scale = 1.0
         self.hires_denoise = 0.4
@@ -102,6 +107,8 @@ struct GenParams(Copyable, Movable):
             or self.variation_strength != other.variation_strength
             or self.images != other.images
             or self.init_image != other.init_image
+            or self.mask_image != other.mask_image
+            or self.mask_channel != other.mask_channel
             or self.creativity != other.creativity
             or self.hires_scale != other.hires_scale
             or self.hires_denoise != other.hires_denoise
@@ -136,6 +143,8 @@ struct GenParams(Copyable, Movable):
         o.set("variation_strength", JSONValue.from_float(self.variation_strength))
         o.set("images", JSONValue.from_int(self.images))
         o.set("init_image", JSONValue.from_string(self.init_image))
+        o.set("mask_image", JSONValue.from_string(self.mask_image))
+        o.set("lanpaint_mask_channel", JSONValue.from_string(self.mask_channel))
         o.set("creativity", JSONValue.from_float(self.creativity))
         o.set("hires_scale", JSONValue.from_float(self.hires_scale))
         o.set("hires_denoise", JSONValue.from_float(self.hires_denoise))
@@ -191,6 +200,10 @@ struct GenParams(Copyable, Movable):
         )
         p.images = GenParams._int(obj, String("images"), p.images)
         p.init_image = GenParams._str(obj, String("init_image"), p.init_image)
+        p.mask_image = GenParams._str(obj, String("mask_image"), p.mask_image)
+        p.mask_channel = GenParams._str(
+            obj, String("lanpaint_mask_channel"), p.mask_channel
+        )
         p.creativity = GenParams._num(obj, String("creativity"), p.creativity)
         p.hires_scale = GenParams._num(obj, String("hires_scale"), p.hires_scale)
         p.hires_denoise = GenParams._num(obj, String("hires_denoise"), p.hires_denoise)
@@ -267,6 +280,12 @@ struct GenParams(Copyable, Movable):
             p.images = obj[String("images")].as_int()
         if GenParams._chk(obj, String("init_image"), False, False, True, ignored):
             p.init_image = obj[String("init_image")].as_string()
+        if GenParams._chk(obj, String("mask_image"), False, False, True, ignored):
+            p.mask_image = obj[String("mask_image")].as_string()
+        if GenParams._chk(
+            obj, String("lanpaint_mask_channel"), False, False, True, ignored
+        ):
+            p.mask_channel = obj[String("lanpaint_mask_channel")].as_string()
         if GenParams._chk(obj, String("creativity"), False, True, False, ignored):
             p.creativity = obj[String("creativity")].as_float()
         if GenParams._chk(obj, String("hires_scale"), False, True, False, ignored):
@@ -363,6 +382,8 @@ struct GenParamStore(Movable):
     var m_variation_strength: Float32
     var m_images: Float32
     var m_init_image: String           # P7: init image path (text mirror)
+    var m_mask_image: String           # inpaint: mask PNG path (text mirror)
+    var m_mask_channel: String         # inpaint: channel enum string mirror
     var m_creativity: Float32          # P7: 0..1 slider mirror
     var m_hires_scale: Float32         # hires-fix: 1..2 scale slider mirror
     var m_hires_denoise: Float32       # hires-fix: 0..1 denoise slider mirror
@@ -389,6 +410,8 @@ struct GenParamStore(Movable):
     var d_variation_strength: Bool
     var d_images: Bool
     var d_init_image: Bool
+    var d_mask_image: Bool
+    var d_mask_channel: Bool
     var d_creativity: Bool
     var d_hires_scale: Bool
     var d_hires_denoise: Bool
@@ -410,6 +433,8 @@ struct GenParamStore(Movable):
         self.m_variation_strength = 0.0
         self.m_images = 1.0
         self.m_init_image = String("")
+        self.m_mask_image = String("")
+        self.m_mask_channel = String("load_image_mask")
         self.m_creativity = 0.5
         self.m_hires_scale = 1.0
         self.m_hires_denoise = 0.4
@@ -432,6 +457,8 @@ struct GenParamStore(Movable):
         self.d_variation_strength = False
         self.d_images = False
         self.d_init_image = False
+        self.d_mask_image = False
+        self.d_mask_channel = False
         self.d_creativity = False
         self.d_hires_scale = False
         self.d_hires_denoise = False
@@ -452,6 +479,8 @@ struct GenParamStore(Movable):
         self.d_variation_strength = False
         self.d_images = False
         self.d_init_image = False
+        self.d_mask_image = False
+        self.d_mask_channel = False
         self.d_creativity = False
         self.d_hires_scale = False
         self.d_hires_denoise = False
@@ -463,7 +492,8 @@ struct GenParamStore(Movable):
             or self.d_height or self.d_steps or self.d_cfg or self.d_seed
             or self.d_sampler or self.d_scheduler or self.d_variation_seed
             or self.d_variation_strength or self.d_images
-            or self.d_init_image or self.d_creativity
+            or self.d_init_image or self.d_mask_image or self.d_mask_channel
+            or self.d_creativity
             or self.d_hires_scale or self.d_hires_denoise or self.d_loras
         )
 
@@ -535,6 +565,10 @@ struct GenParamStore(Movable):
             p.images = Int(self.m_images) if Int(self.m_images) >= 1 else 1
         if self.d_init_image:
             p.init_image = self.m_init_image.copy()
+        if self.d_mask_image:
+            p.mask_image = self.m_mask_image.copy()
+        if self.d_mask_channel:
+            p.mask_channel = self.m_mask_channel.copy()
         if self.d_creativity:
             var c = _round2(Float64(self.m_creativity))
             if c < 0.0:
@@ -603,6 +637,8 @@ struct GenParamStore(Movable):
         self.m_variation_strength = Float32(self.params.variation_strength)
         self.m_images = Float32(self.params.images)
         self.m_init_image = self.params.init_image.copy()
+        self.m_mask_image = self.params.mask_image.copy()
+        self.m_mask_channel = self.params.mask_channel.copy()
         self.m_creativity = Float32(self.params.creativity)
         self.m_hires_scale = Float32(self.params.hires_scale)
         self.m_hires_denoise = Float32(self.params.hires_denoise)
