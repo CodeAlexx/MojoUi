@@ -1159,6 +1159,15 @@ def daemon_submit_grid(
         _grid_copy_num(base, body, String("cfg"), axis)
         _grid_copy_str(base, body, String("sampler"), axis)
         _grid_copy_str(base, body, String("scheduler"), axis)
+        # Advanced-sampling knobs ride through to every cell (none of these is a
+        # sweep axis, so they're never the swept field). The server's grid
+        # base_params lifts them onto each cell; the worker honors-or-warns.
+        _grid_copy_int(base, body, String("clip_skip"), axis)
+        _grid_copy_num(base, body, String("eta"), axis)
+        _grid_copy_num(base, body, String("sigma_min"), axis)
+        _grid_copy_num(base, body, String("sigma_max"), axis)
+        _grid_copy_bool(base, body, String("restart_sampling"), axis)
+        _grid_copy_str(base, body, String("vae"), axis)
 
         var req = dumps(body)
         rt.last_submit_json = req.copy()
@@ -1214,6 +1223,15 @@ def _grid_copy_num(
         return
     if base.contains(key) and base[key].is_number():
         out.set(key, JSONValue.from_float(base[key].as_float()))
+
+
+def _grid_copy_bool(
+    base: JSONValue, mut out: JSONValue, key: String, axis: String
+) raises:
+    if key == axis:
+        return
+    if base.contains(key) and base[key].is_bool():
+        out.set(key, JSONValue.from_bool(base[key].as_bool()))
 
 
 def daemon_cancel_submitted(mut state: InferenceState, mut rt: GraphUiRuntime):

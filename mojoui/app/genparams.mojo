@@ -65,6 +65,15 @@ struct GenParams(Copyable, Movable):
     var creativity: Float64       # P7: 0..1 — denoise start sigma fraction
     var hires_scale: Float64      # hires-fix: >1.0 enables the 2-pass refine
     var hires_denoise: Float64    # hires-fix: refine-pass creativity 0..1
+    # ── advanced-sampling knobs (_section_advanced). Plumbed end-to-end; the
+    #    worker HONORS what it can and warns-loud on the rest. "Unset" sentinels:
+    #    clip_skip 0 / eta+sigma -1.0 / restart_sampling False / vae "". ──
+    var clip_skip: Int
+    var eta: Float64
+    var sigma_min: Float64
+    var sigma_max: Float64
+    var restart_sampling: Bool
+    var vae: String
     var loras: List[GenLora]
 
     def __init__(out self):
@@ -88,6 +97,12 @@ struct GenParams(Copyable, Movable):
         self.creativity = 0.5
         self.hires_scale = 1.0
         self.hires_denoise = 0.4
+        self.clip_skip = 0
+        self.eta = -1.0
+        self.sigma_min = -1.0
+        self.sigma_max = -1.0
+        self.restart_sampling = False
+        self.vae = String("")
         self.loras = List[GenLora]()
 
     def same_as(self, other: GenParams) -> Bool:
@@ -112,6 +127,12 @@ struct GenParams(Copyable, Movable):
             or self.creativity != other.creativity
             or self.hires_scale != other.hires_scale
             or self.hires_denoise != other.hires_denoise
+            or self.clip_skip != other.clip_skip
+            or self.eta != other.eta
+            or self.sigma_min != other.sigma_min
+            or self.sigma_max != other.sigma_max
+            or self.restart_sampling != other.restart_sampling
+            or self.vae != other.vae
         ):
             return False
         if len(self.loras) != len(other.loras):
@@ -148,6 +169,12 @@ struct GenParams(Copyable, Movable):
         o.set("creativity", JSONValue.from_float(self.creativity))
         o.set("hires_scale", JSONValue.from_float(self.hires_scale))
         o.set("hires_denoise", JSONValue.from_float(self.hires_denoise))
+        o.set("clip_skip", JSONValue.from_int(self.clip_skip))
+        o.set("eta", JSONValue.from_float(self.eta))
+        o.set("sigma_min", JSONValue.from_float(self.sigma_min))
+        o.set("sigma_max", JSONValue.from_float(self.sigma_max))
+        o.set("restart_sampling", JSONValue.from_bool(self.restart_sampling))
+        o.set("vae", JSONValue.from_string(self.vae))
         var la = JSONValue.new_array()
         for i in range(len(self.loras)):
             var lo = JSONValue.new_object()
@@ -174,6 +201,12 @@ struct GenParams(Copyable, Movable):
         if not obj.contains(key) or not obj[key].is_string():
             return dflt.copy()
         return obj[key].as_string()
+
+    @staticmethod
+    def _bool(obj: JSONValue, key: String, dflt: Bool) raises -> Bool:
+        if not obj.contains(key) or not obj[key].is_bool():
+            return dflt
+        return obj[key].as_bool()
 
     @staticmethod
     def from_json(text: String) raises -> GenParams:
@@ -207,6 +240,14 @@ struct GenParams(Copyable, Movable):
         p.creativity = GenParams._num(obj, String("creativity"), p.creativity)
         p.hires_scale = GenParams._num(obj, String("hires_scale"), p.hires_scale)
         p.hires_denoise = GenParams._num(obj, String("hires_denoise"), p.hires_denoise)
+        p.clip_skip = GenParams._int(obj, String("clip_skip"), p.clip_skip)
+        p.eta = GenParams._num(obj, String("eta"), p.eta)
+        p.sigma_min = GenParams._num(obj, String("sigma_min"), p.sigma_min)
+        p.sigma_max = GenParams._num(obj, String("sigma_max"), p.sigma_max)
+        p.restart_sampling = GenParams._bool(
+            obj, String("restart_sampling"), p.restart_sampling
+        )
+        p.vae = GenParams._str(obj, String("vae"), p.vae)
         if obj.contains(String("lora")) and obj[String("lora")].is_array():
             var arr = obj[String("lora")]
             for i in range(arr.length()):
@@ -234,6 +275,19 @@ struct GenParams(Copyable, Movable):
         if want_num and v.is_number():
             return True
         if want_str and v.is_string():
+            return True
+        ignored.append(key.copy())
+        return False
+
+    @staticmethod
+    def _chk_bool(
+        obj: JSONValue, key: String, mut ignored: List[String],
+    ) raises -> Bool:
+        """True iff `key` is present AND a bool. Present-but-wrong-typed keys
+        are recorded in `ignored` (F8: never silently default)."""
+        if not obj.contains(key):
+            return False
+        if obj[key].is_bool():
             return True
         ignored.append(key.copy())
         return False
@@ -292,6 +346,18 @@ struct GenParams(Copyable, Movable):
             p.hires_scale = obj[String("hires_scale")].as_float()
         if GenParams._chk(obj, String("hires_denoise"), False, True, False, ignored):
             p.hires_denoise = obj[String("hires_denoise")].as_float()
+        if GenParams._chk(obj, String("clip_skip"), True, False, False, ignored):
+            p.clip_skip = obj[String("clip_skip")].as_int()
+        if GenParams._chk(obj, String("eta"), False, True, False, ignored):
+            p.eta = obj[String("eta")].as_float()
+        if GenParams._chk(obj, String("sigma_min"), False, True, False, ignored):
+            p.sigma_min = obj[String("sigma_min")].as_float()
+        if GenParams._chk(obj, String("sigma_max"), False, True, False, ignored):
+            p.sigma_max = obj[String("sigma_max")].as_float()
+        if GenParams._chk_bool(obj, String("restart_sampling"), ignored):
+            p.restart_sampling = obj[String("restart_sampling")].as_bool()
+        if GenParams._chk(obj, String("vae"), False, False, True, ignored):
+            p.vae = obj[String("vae")].as_string()
         if obj.contains(String("lora")):
             if not obj[String("lora")].is_array():
                 ignored.append(String("lora"))
@@ -387,6 +453,13 @@ struct GenParamStore(Movable):
     var m_creativity: Float32          # P7: 0..1 slider mirror
     var m_hires_scale: Float32         # hires-fix: 1..2 scale slider mirror
     var m_hires_denoise: Float32       # hires-fix: 0..1 denoise slider mirror
+    # advanced-sampling mirrors (_section_advanced)
+    var m_clip_skip: Float32           # drag mirror; committed as Int
+    var m_eta: Float32
+    var m_sigma_min: Float32
+    var m_sigma_max: Float32
+    var m_restart_sampling: Bool       # checkbox mirror
+    var m_vae: String                  # VAE name string mirror
     var m_model_index: Int32      # into the screen's model-name list
     var m_sampler_index: Int32
     var m_scheduler_index: Int32
@@ -415,6 +488,12 @@ struct GenParamStore(Movable):
     var d_creativity: Bool
     var d_hires_scale: Bool
     var d_hires_denoise: Bool
+    var d_clip_skip: Bool
+    var d_eta: Bool
+    var d_sigma_min: Bool
+    var d_sigma_max: Bool
+    var d_restart_sampling: Bool
+    var d_vae: Bool
     var d_loras: Bool
 
     def __init__(out self):
@@ -438,6 +517,12 @@ struct GenParamStore(Movable):
         self.m_creativity = 0.5
         self.m_hires_scale = 1.0
         self.m_hires_denoise = 0.4
+        self.m_clip_skip = 0.0
+        self.m_eta = -1.0
+        self.m_sigma_min = -1.0
+        self.m_sigma_max = -1.0
+        self.m_restart_sampling = False
+        self.m_vae = String("")
         self.m_model_index = 0
         self.m_sampler_index = 0
         self.m_scheduler_index = 0
@@ -462,6 +547,12 @@ struct GenParamStore(Movable):
         self.d_creativity = False
         self.d_hires_scale = False
         self.d_hires_denoise = False
+        self.d_clip_skip = False
+        self.d_eta = False
+        self.d_sigma_min = False
+        self.d_sigma_max = False
+        self.d_restart_sampling = False
+        self.d_vae = False
         self.d_loras = False
 
     def clear_dirty(mut self):
@@ -484,6 +575,12 @@ struct GenParamStore(Movable):
         self.d_creativity = False
         self.d_hires_scale = False
         self.d_hires_denoise = False
+        self.d_clip_skip = False
+        self.d_eta = False
+        self.d_sigma_min = False
+        self.d_sigma_max = False
+        self.d_restart_sampling = False
+        self.d_vae = False
         self.d_loras = False
 
     def any_dirty(self) -> Bool:
@@ -494,7 +591,10 @@ struct GenParamStore(Movable):
             or self.d_variation_strength or self.d_images
             or self.d_init_image or self.d_mask_image or self.d_mask_channel
             or self.d_creativity
-            or self.d_hires_scale or self.d_hires_denoise or self.d_loras
+            or self.d_hires_scale or self.d_hires_denoise
+            or self.d_clip_skip or self.d_eta or self.d_sigma_min
+            or self.d_sigma_max or self.d_restart_sampling or self.d_vae
+            or self.d_loras
         )
 
     # ── H2: THE single dispatch point. Every param edit lands here. ──
@@ -590,6 +690,21 @@ struct GenParamStore(Movable):
             if hd > 1.0:
                 hd = 1.0
             p.hires_denoise = hd
+        if self.d_clip_skip:
+            var cs = Int(self.m_clip_skip)
+            if cs < 0:
+                cs = 0
+            p.clip_skip = cs
+        if self.d_eta:
+            p.eta = _round2(Float64(self.m_eta))
+        if self.d_sigma_min:
+            p.sigma_min = _round2(Float64(self.m_sigma_min))
+        if self.d_sigma_max:
+            p.sigma_max = _round2(Float64(self.m_sigma_max))
+        if self.d_restart_sampling:
+            p.restart_sampling = self.m_restart_sampling
+        if self.d_vae:
+            p.vae = self.m_vae.copy()
         if self.d_loras:
             p.loras = List[GenLora]()
             for i in range(len(self.m_lora_indices)):
@@ -642,6 +757,12 @@ struct GenParamStore(Movable):
         self.m_creativity = Float32(self.params.creativity)
         self.m_hires_scale = Float32(self.params.hires_scale)
         self.m_hires_denoise = Float32(self.params.hires_denoise)
+        self.m_clip_skip = Float32(self.params.clip_skip)
+        self.m_eta = Float32(self.params.eta)
+        self.m_sigma_min = Float32(self.params.sigma_min)
+        self.m_sigma_max = Float32(self.params.sigma_max)
+        self.m_restart_sampling = self.params.restart_sampling
+        self.m_vae = self.params.vae.copy()
         var mi = _find_option(model_names, self.params.model)
         if mi >= 0:
             self.m_model_index = mi
