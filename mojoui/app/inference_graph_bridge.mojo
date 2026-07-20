@@ -60,9 +60,6 @@ comptime KLEIN_OUT_DIR = "/home/alex/mojodiffusion/output/serenityui"
 comptime KLEIN_REQ_DIR = "/home/alex/mojodiffusion/output/serenityui/requests"
 comptime KLEIN_CAP_DIR = "/home/alex/mojodiffusion/output/serenityui/caps"
 comptime KLEIN_BIN_DIR = "/home/alex/mojodiffusion/output/bin"
-comptime LTX2_FAST_CONTEXT = "/home/alex/mojodiffusion/output/serenity_ui_out/conditioning_cache/ltx2/creator-refhq-v1/a1feff9785606da9.safetensors"
-comptime LTX2_FAST_PROMPT = "vrtlEri2 woman in a cinematic close-up portrait, natural window light, subtle movement, realistic skin, shallow depth of field"
-comptime SERENITY_LORA_DIR = "/home/alex/.serenity/models/loras"
 
 
 struct GraphUiRuntime(Movable):
@@ -106,7 +103,6 @@ struct GraphUiRuntime(Movable):
     var cli_pid: Int
     var cli_slug: String
     var cli_out_png: String
-    var cli_video_path: String
     var cli_log_path: String
     var cli_req_json: String
     var cli_width: Int
@@ -147,7 +143,6 @@ struct GraphUiRuntime(Movable):
         self.cli_pid = 0
         self.cli_slug = String("")
         self.cli_out_png = String("")
-        self.cli_video_path = String("")
         self.cli_log_path = String("")
         self.cli_req_json = String("")
         self.cli_width = 0
@@ -579,7 +574,6 @@ def _sample_prompt_json(
 # arg_style:
 #   0 = sample_cli  ->  BIN <config.json> <lora|-> <req.json> <id> <out.png>
 #   1 = zimage      ->  BIN <lora|base> <out.png> <req.json> <id>
-#   2 = ltx2 fast   ->  BIN fast lora resident noaudio nonag <out_dir> 0
 
 comptime MODEL_OUT_DIR = KLEIN_OUT_DIR
 comptime MODEL_REQ_DIR = KLEIN_REQ_DIR
@@ -617,8 +611,6 @@ struct ModelBackendSpec(Movable):
         self.arg_style = arg_style
         self.src = src.copy()
         self.bin = String(MODEL_BIN_DIR) + String("/") + slug + String("_serenity_cli")
-        if slug == String("ltx2"):
-            self.bin = String(MODEL_BIN_DIR) + String("/ltx2_video_smoke_runner")
         self.config = config.copy()
         self.needs_precache = needs_precache
         self.precache_src = precache_src.copy()
@@ -701,12 +693,6 @@ def _resolve_model_spec(name: String) raises -> ModelBackendSpec:
             String("serenitymojo/pipeline/anima_serenity_cli.mojo"),
             String("serenitymojo/configs/anima.json"),
         )
-    if name == String("LTX2 Fast"):
-        return ModelBackendSpec(
-            True, String("ltx2"), 2,
-            String("serenitymojo/pipeline/ltx2_t2v_av_hq.mojo"),
-            String(""),
-        )
     if name == String("SD 1.5"):
         return ModelBackendSpec.unsupported(
             String("sd15"),
@@ -749,103 +735,6 @@ def _read_pidfile(path: String) -> Int:
     return 0
 
 
-def _read_text_or_empty(path: String) -> String:
-    try:
-        with open(path, String("r")) as f:
-            return f.read()
-    except:
-        return String("")
-
-
-def _count_occurrences(text: String, needle: String) -> Int:
-    """Count non-overlapping ASCII markers without regex/Python."""
-    var tn = text.byte_length()
-    var nn = needle.byte_length()
-    if nn == 0 or tn < nn:
-        return 0
-    var tb = text.as_bytes()
-    var nb = needle.as_bytes()
-    var count = 0
-    var i = 0
-    while i <= tn - nn:
-        var same = True
-        for j in range(nn):
-            if tb[i + j] != nb[j]:
-                same = False
-                break
-        if same:
-            count += 1
-            i += nn
-        else:
-            i += 1
-    return count
-
-
-def _safe_shell_token(path: String) raises -> String:
-    """Accept the path alphabet used by Serenity's model/output roots.
-
-    The detached launcher nests this token inside a shell command, so reject
-    whitespace and metacharacters instead of attempting a second quoting
-    language inside the existing setsid/bash wrapper.
-    """
-    if path.byte_length() == 0:
-        raise Error("empty shell token")
-    var b = path.as_bytes()
-    for i in range(path.byte_length()):
-        var c = Int(b[i])
-        var ok = (
-            (c >= 48 and c <= 57) or (c >= 65 and c <= 90)
-            or (c >= 97 and c <= 122) or c == 47 or c == 46
-            or c == 95 or c == 45
-        )
-        if not ok:
-            raise Error("LTX2 path contains unsupported shell characters: " + path)
-    return path.copy()
-
-
-def _resolve_ltx2_lora(name: String) raises -> String:
-    if name.byte_length() == 0:
-        raise Error("LTX2 Fast requires one selected LoRA")
-    if _path_exists(name):
-        return _safe_shell_token(name)
-    if _path_exists(name + String(".safetensors")):
-        return _safe_shell_token(name + String(".safetensors"))
-    var under = String(SERENITY_LORA_DIR) + String("/") + name
-    if _path_exists(under):
-        return _safe_shell_token(under)
-    if _path_exists(under + String(".safetensors")):
-        return _safe_shell_token(under + String(".safetensors"))
-    raise Error(
-        String("LTX2 LoRA not found: ") + name
-        + String(" (select a file scanned from ") + String(SERENITY_LORA_DIR)
-        + String(")")
-    )
-
-
-def _ltx2_cli_progress(mut state: InferenceState, mut rt: GraphUiRuntime):
-    var log = _read_text_or_empty(rt.cli_log_path)
-    if log.byte_length() == 0:
-        rt.last_status = String("LTX2 queued")
-        return
-    state.total_steps = Int32(8)
-    var announced_steps = _count_occurrences(log, String("--- step"))
-    if announced_steps > 8:
-        announced_steps = 8
-    state.current_step = Int32(announced_steps)
-    if log.find(String("[decode] video VAE")) >= 0:
-        rt.last_status = String("LTX2 decoding video")
-    elif announced_steps > 0:
-        rt.last_status = (
-            String("LTX2 step ") + String(announced_steps) + String(" of 8")
-        )
-    elif log.find(String("[resident] preloading")) >= 0:
-        rt.last_status = String("LTX2 loading model blocks")
-    elif log.find(String("[connector]")) >= 0:
-        rt.last_status = String("LTX2 loading prompt context")
-    else:
-        rt.last_status = String("LTX2 loading model")
-
-
 def cli_spawn_model(
     mut state: InferenceState, mut rt: GraphUiRuntime,
     spec: ModelBackendSpec, display: QueueJob, size: Int,
@@ -864,53 +753,18 @@ def cli_spawn_model(
     var caps_pos = String(MODEL_CAP_DIR) + String("/") + stem + String("_pos.bin")
     var caps_neg = String(MODEL_CAP_DIR) + String("/") + stem + String("_neg.bin")
     var out_png = String(MODEL_OUT_DIR) + String("/") + stem + String(".png")
-    var video_path = String("")
-    var ltx2_out_dir = String("")
-    var request_width = size
-    var request_height = size
-    var request_steps = Int(display.steps)
-    if spec.arg_style == 2:
-        ltx2_out_dir = String(MODEL_OUT_DIR) + String("/") + stem
-        out_png = ltx2_out_dir + String("/hq_frame04.png")
-        video_path = ltx2_out_dir + String("/ltx2_t2v_hq.mp4")
-        request_width = 384
-        request_height = 256
-        request_steps = 8
     var log_path = String(MODEL_OUT_DIR) + String("/") + stem + String(".log")
     var pid_path = String(MODEL_OUT_DIR) + String("/") + stem + String(".pid")
     var json = _sample_prompt_json(
-        display.prompt, state.negative, request_width, request_height,
-        Int32(request_steps), state.cfg, display.seed, caps_pos, caps_neg,
+        display.prompt, state.negative, size, size,
+        display.steps, state.cfg, display.seed, caps_pos, caps_neg,
         spec.needs_precache,
     )
     _write_text_file(req_json, json)
 
     # Per-model invocation contract.
     var invoke: String
-    if spec.arg_style == 2:
-        if display.prompt != String(LTX2_FAST_PROMPT):
-            raise Error(
-                String("LTX2 Fast is currently pinned to its cached prompt; use: ")
-                + String(LTX2_FAST_PROMPT)
-            )
-        if state.cli_lora_count != 1:
-            raise Error(
-                String("LTX2 Fast requires exactly one selected trained LoRA; got ")
-                + String(state.cli_lora_count)
-            )
-        if not _path_exists(String(LTX2_FAST_CONTEXT)):
-            raise Error(String("LTX2 cached prompt context missing: ") + String(LTX2_FAST_CONTEXT))
-        var ltx2_lora = _resolve_ltx2_lora(state.cli_lora_name)
-        var ltx2_context = _safe_shell_token(String(LTX2_FAST_CONTEXT))
-        var ltx2_out = _safe_shell_token(ltx2_out_dir)
-        invoke = (
-            String("env LTX2_TRAINED_LORA=") + ltx2_lora
-            + String(" LTX2_TRAINED_LORA_MULT=") + String(state.cli_lora_weight)
-            + String(" LTX2_CTX_DUMP=") + ltx2_context + String(" ")
-            + spec.bin + String(" fast lora resident noaudio nonag ")
-            + ltx2_out + String(" 0")
-        )
-    elif spec.arg_style == 1:
+    if spec.arg_style == 1:
         # zimage_generate <lora|base> <out.png> <req.json> <id>
         invoke = spec.bin + String(" base ") + out_png + String(" ") + req_json + String(" serenityui")
     else:
@@ -937,25 +791,16 @@ def cli_spawn_model(
     rt.cli_cancelled = False
     rt.cli_slug = spec.slug.copy()
     rt.cli_out_png = out_png.copy()
-    rt.cli_video_path = video_path.copy()
     rt.cli_log_path = log_path.copy()
     rt.cli_req_json = req_json.copy()
-    rt.cli_width = request_width
-    rt.cli_height = request_height
+    rt.cli_width = size
+    rt.cli_height = size
     rt.cli_tick_ct = 0
     # F11: honest about what the CLI request JSON does NOT carry.
-    if spec.arg_style == 2:
-        rt.cli_note = (
-            String("LTX2 Fast · selected LoRA @ ")
-            + String(state.cli_lora_weight)
-            + String(" · cached Eri2 prompt · 384x256 · 8 steps")
-        )
-        state.total_steps = Int32(8)
-    else:
-        rt.cli_note = (
-            String("CLI: loras/variation/images ignored; size forced ")
-            + String(size)
-        )
+    rt.cli_note = (
+        String("CLI: loras/variation/images ignored; size forced ")
+        + String(size)
+    )
     rt.route_label = String("cli")
     rt.last_command = cmd^
     rt.last_prompt_json = req_json.copy()
@@ -978,8 +823,6 @@ def cli_tick(mut state: InferenceState, mut rt: GraphUiRuntime):
         return
     rt.cli_tick_ct = 0
     if _sys_pid_alive(rt.cli_pid):
-        if rt.cli_slug == String("ltx2"):
-            _ltx2_cli_progress(state, rt)
         return  # still working; log/PNG polled again next interval
     rt.cli_active = False
     if rt.cli_cancelled:
@@ -994,8 +837,6 @@ def cli_tick(mut state: InferenceState, mut rt: GraphUiRuntime):
             rt.last_command, rt.cli_width, rt.cli_height, String(""),
         )
         _finish_success(state, rt, run^)
-        if rt.cli_slug == String("ltx2") and _path_exists(rt.cli_video_path):
-            rt.last_status = String("LTX2 done -> ") + rt.cli_video_path
     else:
         _finish_failed(
             state, rt,
@@ -1138,22 +979,19 @@ def graph_submit_current(mut state: InferenceState, mut rt: GraphUiRuntime):
         + String("_") + String(display.id) + String(".png")
     )
     try:
-        # Image CLIs retain the Comfy-shaped graph sanity pass. LTX2 is a
-        # video artifact backend, so it launches its already-built Mojo runner
-        # directly instead of pretending its output is an image workflow.
-        if spec.arg_style != 2:
-            var graph = build_klein9b_inference_graph(
-                state, display, out_png, Int32(size), Int32(size)
+        # Graph executor sanity (pure in-process, fast) before the launch.
+        var graph = build_klein9b_inference_graph(
+            state, display, out_png, Int32(size), Int32(size)
+        )
+        var canvas = CanvasState()
+        var device = WorkflowDeviceConfig()
+        device.dry_run = False
+        var exec_result = execute_workflow_with_device(graph, canvas, device)
+        if not exec_result.success:
+            _finish_failed(
+                state, rt, String("workflow executor failed before backend launch")
             )
-            var canvas = CanvasState()
-            var device = WorkflowDeviceConfig()
-            device.dry_run = False
-            var exec_result = execute_workflow_with_device(graph, canvas, device)
-            if not exec_result.success:
-                _finish_failed(
-                    state, rt, String("workflow executor failed before backend launch")
-                )
-                return
+            return
         _start_display_job(state, display)
         cli_spawn_model(state, rt, spec, display, size)
     except e:
@@ -1567,9 +1405,6 @@ def graph_progress_fraction(state: InferenceState) -> Float32:
 
 
 def graph_backend_label(rt: GraphUiRuntime) -> String:
-    var prefix = String("graph executor  ·  Klein 9B  ·  ")
-    if rt.cli_slug == String("ltx2"):
-        prefix = String("Mojo CLI  ·  LTX2 Fast  ·  ")
     if rt.last_error.byte_length() > 0:
-        return prefix + rt.last_status + String("  ·  ") + rt.last_error
-    return prefix + rt.last_status
+        return String("graph executor  ·  Klein 9B  ·  ") + rt.last_status + String("  ·  ") + rt.last_error
+    return String("graph executor  ·  Klein 9B  ·  ") + rt.last_status

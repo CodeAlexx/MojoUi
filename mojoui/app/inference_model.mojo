@@ -259,19 +259,10 @@ struct InferenceState(Movable):
     # static dropdown, so arch->CLI mapping happens in the screen and lands
     # here at submit time.
     var cli_model_override: String
-    # CLI-only LoRA handoff. The generation screen resolves its canonical
-    # GenParams LoRA rows into these fields before launching a prebuilt Mojo
-    # backend. Model adapters that do not support LoRA keep count=0.
-    var cli_lora_count: Int
-    var cli_lora_name: String
-    var cli_lora_weight: Float32
 
     def __init__(out self):
         self.advanced = False
         self.cli_model_override = String("")
-        self.cli_lora_count = 0
-        self.cli_lora_name = String("")
-        self.cli_lora_weight = 1.0
 
         var tasks = List[String]()
         tasks.append(String("T2I - Text to Image"))
@@ -293,7 +284,6 @@ struct InferenceState(Movable):
         models.append(String("ERNIE"))
         models.append(String("Anima"))
         models.append(String("SDXL"))
-        models.append(String("LTX2 Fast"))
         models.append(String("SD 1.5"))
         self.model_options = models^
         self.model_index = 0  # Klein 9B first; SerenityUI graph backend default.
