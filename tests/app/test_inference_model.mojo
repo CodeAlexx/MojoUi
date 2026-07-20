@@ -166,6 +166,20 @@ def test_steps_clamped_to_min_one() raises:
     print("PASS: steps clamped to >= 1")
 
 
+def test_ltx2_cli_fields_and_model_option() raises:
+    var s = InferenceState()
+    _expect(s.cli_lora_count == 0, "fresh CLI LoRA count should be zero")
+    _expect(s.cli_lora_name == String(""), "fresh CLI LoRA name should be empty")
+    _expect(s.cli_lora_weight == 1.0, "fresh CLI LoRA weight should be 1.0")
+    var found = False
+    for i in range(len(s.model_options)):
+        if s.model_options[i] == String("LTX2 Fast"):
+            found = True
+            break
+    _expect(found, "LTX2 Fast should be present in the static model catalog")
+    print("PASS: LTX2 CLI fields + model option")
+
+
 def main() raises:
     test_idle_tick_is_noop()
     test_generate_starts()
@@ -176,4 +190,5 @@ def main() raises:
     test_cancel_mid_run()
     test_cancel_promotes_queued()
     test_color_seed_deterministic_and_distinct()
-    print("PASS: all 9 inference-model tests")
+    test_ltx2_cli_fields_and_model_option()
+    print("PASS: all 10 inference-model tests")

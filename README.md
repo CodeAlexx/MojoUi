@@ -71,6 +71,20 @@ pixi run test-ffi       # render/ffi.mojo smoke (FFI imports + key constants)
 pixi run test-backend   # render/backend.mojo smoke (color packing + tessellation + API surface)
 ```
 
+## Serenity inference bridge
+
+`mojoui/app/inference_graph_bridge.mojo` includes a nonblocking pure-Mojo LTX2
+video route for SerenityUI. `LTX2 Fast` launches the already-built
+`mojodiffusion/output/bin/ltx2_video_smoke_runner`, carries one selected LoRA
+name and weight from `InferenceState`, and polls the runner log without blocking
+the render thread. The shared status bar reports `loading model`,
+`step x of 8`, `decoding video`, and the final MP4 path. Focused gates:
+
+```bash
+pixi run test-inference-model
+pixi run test-inference-graph-bridge
+```
+
 The build assumes Linux with OpenGL 3.3 (`-DSOKOL_GLCORE`). Other backends (Metal, D3D11, Vulkan, WebGPU) compile by changing the SOKOL define in `c_floor/Makefile` — not yet validated.
 
 ## App model — one handler, text **or** GUI
