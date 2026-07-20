@@ -259,10 +259,15 @@ struct InferenceState(Movable):
     # static dropdown, so arch->CLI mapping happens in the screen and lands
     # here at submit time.
     var cli_model_override: String
+    # Exact canonical serenity.genparams.v1 body for request-driven backends.
+    # The bridge writes this verbatim; model adapters must never rebuild it
+    # from a reduced legacy state snapshot.
+    var cli_request_json: String
 
     def __init__(out self):
         self.advanced = False
         self.cli_model_override = String("")
+        self.cli_request_json = String("")
 
         var tasks = List[String]()
         tasks.append(String("T2I - Text to Image"))
@@ -285,6 +290,7 @@ struct InferenceState(Movable):
         models.append(String("Anima"))
         models.append(String("SDXL"))
         models.append(String("SD 1.5"))
+        models.append(String("LTX2"))
         self.model_options = models^
         self.model_index = 0  # Klein 9B first; SerenityUI graph backend default.
         self.model_open = False
@@ -325,6 +331,7 @@ struct InferenceState(Movable):
         samplers.append(String("dpm++"))
         samplers.append(String("ddim"))
         samplers.append(String("unipc"))
+        samplers.append(String("res2s"))
         self.sampler_options = samplers^
         self.sampler_index = 0
         self.sampler_open = False
@@ -334,6 +341,8 @@ struct InferenceState(Movable):
         scheds.append(String("normal"))
         scheds.append(String("exponential"))
         scheds.append(String("simple"))
+        scheds.append(String("ltx2_distilled"))
+        scheds.append(String("ltx2"))
         self.scheduler_options = scheds^
         self.scheduler_index = 0
         self.scheduler_open = False

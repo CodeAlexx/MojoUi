@@ -50,6 +50,9 @@ struct GenParams(Copyable, Movable):
     var negative: String
     var width: Int
     var height: Int
+    var frames: Int               # video frame count; 1 for still-image requests
+    var fps: Float64              # video playback rate
+    var include_audio: Bool       # decode and mux generated audio for video
     var steps: Int
     var seed: Int                 # concrete seed; -1 = randomize at submit
     var cfg: Float64
@@ -74,6 +77,8 @@ struct GenParams(Copyable, Movable):
     var sigma_max: Float64
     var restart_sampling: Bool
     var vae: String
+    var caps_positive: String     # precomputed positive conditioning artifact
+    var caps_negative: String     # precomputed negative conditioning artifact
     var loras: List[GenLora]
 
     def __init__(out self):
@@ -83,6 +88,9 @@ struct GenParams(Copyable, Movable):
         self.negative = String("")
         self.width = 512
         self.height = 512
+        self.frames = 1
+        self.fps = 24.0
+        self.include_audio = False
         self.steps = 20
         self.seed = 0
         self.cfg = 4.5
@@ -103,6 +111,8 @@ struct GenParams(Copyable, Movable):
         self.sigma_max = -1.0
         self.restart_sampling = False
         self.vae = String("")
+        self.caps_positive = String("")
+        self.caps_negative = String("")
         self.loras = List[GenLora]()
 
     def same_as(self, other: GenParams) -> Bool:
@@ -113,6 +123,9 @@ struct GenParams(Copyable, Movable):
             or self.negative != other.negative
             or self.width != other.width
             or self.height != other.height
+            or self.frames != other.frames
+            or self.fps != other.fps
+            or self.include_audio != other.include_audio
             or self.steps != other.steps
             or self.seed != other.seed
             or self.cfg != other.cfg
@@ -133,6 +146,8 @@ struct GenParams(Copyable, Movable):
             or self.sigma_max != other.sigma_max
             or self.restart_sampling != other.restart_sampling
             or self.vae != other.vae
+            or self.caps_positive != other.caps_positive
+            or self.caps_negative != other.caps_negative
         ):
             return False
         if len(self.loras) != len(other.loras):
@@ -155,6 +170,9 @@ struct GenParams(Copyable, Movable):
         o.set("negative", JSONValue.from_string(self.negative))
         o.set("width", JSONValue.from_int(self.width))
         o.set("height", JSONValue.from_int(self.height))
+        o.set("frames", JSONValue.from_int(self.frames))
+        o.set("fps", JSONValue.from_float(self.fps))
+        o.set("include_audio", JSONValue.from_bool(self.include_audio))
         o.set("steps", JSONValue.from_int(self.steps))
         o.set("seed", JSONValue.from_int(self.seed))
         o.set("cfg", JSONValue.from_float(self.cfg))
@@ -175,6 +193,8 @@ struct GenParams(Copyable, Movable):
         o.set("sigma_max", JSONValue.from_float(self.sigma_max))
         o.set("restart_sampling", JSONValue.from_bool(self.restart_sampling))
         o.set("vae", JSONValue.from_string(self.vae))
+        o.set("caps_positive", JSONValue.from_string(self.caps_positive))
+        o.set("caps_negative", JSONValue.from_string(self.caps_negative))
         var la = JSONValue.new_array()
         for i in range(len(self.loras)):
             var lo = JSONValue.new_object()
@@ -222,6 +242,11 @@ struct GenParams(Copyable, Movable):
         p.negative = GenParams._str(obj, String("negative"), p.negative)
         p.width = GenParams._int(obj, String("width"), p.width)
         p.height = GenParams._int(obj, String("height"), p.height)
+        p.frames = GenParams._int(obj, String("frames"), p.frames)
+        p.fps = GenParams._num(obj, String("fps"), p.fps)
+        p.include_audio = GenParams._bool(
+            obj, String("include_audio"), p.include_audio
+        )
         p.steps = GenParams._int(obj, String("steps"), p.steps)
         p.seed = GenParams._int(obj, String("seed"), p.seed)
         p.cfg = GenParams._num(obj, String("cfg"), p.cfg)
@@ -248,6 +273,12 @@ struct GenParams(Copyable, Movable):
             obj, String("restart_sampling"), p.restart_sampling
         )
         p.vae = GenParams._str(obj, String("vae"), p.vae)
+        p.caps_positive = GenParams._str(
+            obj, String("caps_positive"), p.caps_positive
+        )
+        p.caps_negative = GenParams._str(
+            obj, String("caps_negative"), p.caps_negative
+        )
         if obj.contains(String("lora")) and obj[String("lora")].is_array():
             var arr = obj[String("lora")]
             for i in range(arr.length()):
@@ -316,6 +347,12 @@ struct GenParams(Copyable, Movable):
             p.width = obj[String("width")].as_int()
         if GenParams._chk(obj, String("height"), True, False, False, ignored):
             p.height = obj[String("height")].as_int()
+        if GenParams._chk(obj, String("frames"), True, False, False, ignored):
+            p.frames = obj[String("frames")].as_int()
+        if GenParams._chk(obj, String("fps"), False, True, False, ignored):
+            p.fps = obj[String("fps")].as_float()
+        if GenParams._chk_bool(obj, String("include_audio"), ignored):
+            p.include_audio = obj[String("include_audio")].as_bool()
         if GenParams._chk(obj, String("steps"), True, False, False, ignored):
             p.steps = obj[String("steps")].as_int()
         if GenParams._chk(obj, String("seed"), True, False, False, ignored):
@@ -358,6 +395,10 @@ struct GenParams(Copyable, Movable):
             p.restart_sampling = obj[String("restart_sampling")].as_bool()
         if GenParams._chk(obj, String("vae"), False, False, True, ignored):
             p.vae = obj[String("vae")].as_string()
+        if GenParams._chk(obj, String("caps_positive"), False, False, True, ignored):
+            p.caps_positive = obj[String("caps_positive")].as_string()
+        if GenParams._chk(obj, String("caps_negative"), False, False, True, ignored):
+            p.caps_negative = obj[String("caps_negative")].as_string()
         if obj.contains(String("lora")):
             if not obj[String("lora")].is_array():
                 ignored.append(String("lora"))
@@ -441,6 +482,9 @@ struct GenParamStore(Movable):
     var m_negative: String
     var m_width: Float32
     var m_height: Float32
+    var m_frames: Float32
+    var m_fps: Float32
+    var m_include_audio: Bool
     var m_steps: Float32
     var m_cfg: Float32
     var m_seed_text: String            # integer-typed end-to-end (F1)
@@ -460,6 +504,8 @@ struct GenParamStore(Movable):
     var m_sigma_max: Float32
     var m_restart_sampling: Bool       # checkbox mirror
     var m_vae: String                  # VAE name string mirror
+    var m_caps_positive: String
+    var m_caps_negative: String
     var m_model_index: Int32      # into the screen's model-name list
     var m_sampler_index: Int32
     var m_scheduler_index: Int32
@@ -474,6 +520,9 @@ struct GenParamStore(Movable):
     var d_negative: Bool
     var d_width: Bool
     var d_height: Bool
+    var d_frames: Bool
+    var d_fps: Bool
+    var d_include_audio: Bool
     var d_steps: Bool
     var d_cfg: Bool
     var d_seed: Bool
@@ -494,6 +543,8 @@ struct GenParamStore(Movable):
     var d_sigma_max: Bool
     var d_restart_sampling: Bool
     var d_vae: Bool
+    var d_caps_positive: Bool
+    var d_caps_negative: Bool
     var d_loras: Bool
 
     def __init__(out self):
@@ -505,6 +556,9 @@ struct GenParamStore(Movable):
         self.m_negative = String("")
         self.m_width = 512.0
         self.m_height = 512.0
+        self.m_frames = 1.0
+        self.m_fps = 24.0
+        self.m_include_audio = False
         self.m_steps = 20.0
         self.m_cfg = 4.5
         self.m_seed_text = String("0")
@@ -523,6 +577,8 @@ struct GenParamStore(Movable):
         self.m_sigma_max = -1.0
         self.m_restart_sampling = False
         self.m_vae = String("")
+        self.m_caps_positive = String("")
+        self.m_caps_negative = String("")
         self.m_model_index = 0
         self.m_sampler_index = 0
         self.m_scheduler_index = 0
@@ -533,6 +589,9 @@ struct GenParamStore(Movable):
         self.d_negative = False
         self.d_width = False
         self.d_height = False
+        self.d_frames = False
+        self.d_fps = False
+        self.d_include_audio = False
         self.d_steps = False
         self.d_cfg = False
         self.d_seed = False
@@ -553,6 +612,8 @@ struct GenParamStore(Movable):
         self.d_sigma_max = False
         self.d_restart_sampling = False
         self.d_vae = False
+        self.d_caps_positive = False
+        self.d_caps_negative = False
         self.d_loras = False
 
     def clear_dirty(mut self):
@@ -561,6 +622,9 @@ struct GenParamStore(Movable):
         self.d_negative = False
         self.d_width = False
         self.d_height = False
+        self.d_frames = False
+        self.d_fps = False
+        self.d_include_audio = False
         self.d_steps = False
         self.d_cfg = False
         self.d_seed = False
@@ -581,12 +645,16 @@ struct GenParamStore(Movable):
         self.d_sigma_max = False
         self.d_restart_sampling = False
         self.d_vae = False
+        self.d_caps_positive = False
+        self.d_caps_negative = False
         self.d_loras = False
 
     def any_dirty(self) -> Bool:
         return (
             self.d_model or self.d_prompt or self.d_negative or self.d_width
-            or self.d_height or self.d_steps or self.d_cfg or self.d_seed
+            or self.d_height or self.d_frames or self.d_fps
+            or self.d_include_audio
+            or self.d_steps or self.d_cfg or self.d_seed
             or self.d_sampler or self.d_scheduler or self.d_variation_seed
             or self.d_variation_strength or self.d_images
             or self.d_init_image or self.d_mask_image or self.d_mask_channel
@@ -594,6 +662,7 @@ struct GenParamStore(Movable):
             or self.d_hires_scale or self.d_hires_denoise
             or self.d_clip_skip or self.d_eta or self.d_sigma_min
             or self.d_sigma_max or self.d_restart_sampling or self.d_vae
+            or self.d_caps_positive or self.d_caps_negative
             or self.d_loras
         )
 
@@ -647,6 +716,12 @@ struct GenParamStore(Movable):
             p.width = Int(self.m_width)
         if self.d_height:
             p.height = Int(self.m_height)
+        if self.d_frames:
+            p.frames = Int(self.m_frames) if Int(self.m_frames) >= 1 else 1
+        if self.d_fps:
+            p.fps = _round2(Float64(self.m_fps))
+        if self.d_include_audio:
+            p.include_audio = self.m_include_audio
         if self.d_steps:
             p.steps = Int(self.m_steps) if Int(self.m_steps) >= 1 else 1
         if self.d_cfg:
@@ -705,6 +780,10 @@ struct GenParamStore(Movable):
             p.restart_sampling = self.m_restart_sampling
         if self.d_vae:
             p.vae = self.m_vae.copy()
+        if self.d_caps_positive:
+            p.caps_positive = self.m_caps_positive.copy()
+        if self.d_caps_negative:
+            p.caps_negative = self.m_caps_negative.copy()
         if self.d_loras:
             p.loras = List[GenLora]()
             for i in range(len(self.m_lora_indices)):
@@ -745,6 +824,9 @@ struct GenParamStore(Movable):
         self.m_negative = self.params.negative.copy()
         self.m_width = Float32(self.params.width)
         self.m_height = Float32(self.params.height)
+        self.m_frames = Float32(self.params.frames)
+        self.m_fps = Float32(self.params.fps)
+        self.m_include_audio = self.params.include_audio
         self.m_steps = Float32(self.params.steps)
         self.m_cfg = Float32(self.params.cfg)
         self.m_seed_text = String(self.params.seed)
@@ -763,6 +845,8 @@ struct GenParamStore(Movable):
         self.m_sigma_max = Float32(self.params.sigma_max)
         self.m_restart_sampling = self.params.restart_sampling
         self.m_vae = self.params.vae.copy()
+        self.m_caps_positive = self.params.caps_positive.copy()
+        self.m_caps_negative = self.params.caps_negative.copy()
         var mi = _find_option(model_names, self.params.model)
         if mi >= 0:
             self.m_model_index = mi

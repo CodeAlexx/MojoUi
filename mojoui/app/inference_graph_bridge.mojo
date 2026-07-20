@@ -72,6 +72,7 @@ struct GraphUiRuntime(Movable):
     var result_job_id: UInt64
     var uploaded_job_id: UInt64
     var texture_id: UInt32
+    var result_is_video: Bool
     var last_status: String
     var last_error: String
     var last_command: String
@@ -105,6 +106,9 @@ struct GraphUiRuntime(Movable):
     var cli_out_png: String
     var cli_log_path: String
     var cli_req_json: String
+    var cli_status_path: String
+    var cli_result_path: String
+    var cli_is_video: Bool
     var cli_width: Int
     var cli_height: Int
     var cli_tick_ct: Int
@@ -118,6 +122,7 @@ struct GraphUiRuntime(Movable):
         self.result_job_id = UInt64(0)
         self.uploaded_job_id = UInt64(0)
         self.texture_id = UInt32(0)
+        self.result_is_video = False
         self.last_status = String("ready")
         self.last_error = String("")
         self.last_command = String("")
@@ -145,6 +150,9 @@ struct GraphUiRuntime(Movable):
         self.cli_out_png = String("")
         self.cli_log_path = String("")
         self.cli_req_json = String("")
+        self.cli_status_path = String("")
+        self.cli_result_path = String("")
+        self.cli_is_video = False
         self.cli_width = 0
         self.cli_height = 0
         self.cli_tick_ct = 0
@@ -253,6 +261,11 @@ def _write_text_file(path: String, text: String) raises:
     _ = _sys_close(fd)
     if wrote != n:
         raise Error(String("write failed: ") + path)
+
+
+def _read_text_file(path: String) raises -> String:
+    with open(path, String("r")) as f:
+        return f.read()
 
 
 def _json_escape(text: String) -> String:
@@ -574,6 +587,7 @@ def _sample_prompt_json(
 # arg_style:
 #   0 = sample_cli  ->  BIN <config.json> <lora|-> <req.json> <id> <out.png>
 #   1 = zimage      ->  BIN <lora|base> <out.png> <req.json> <id>
+#   2 = request     ->  BIN <serenity.genparams.v1.json> <output_dir>
 
 comptime MODEL_OUT_DIR = KLEIN_OUT_DIR
 comptime MODEL_REQ_DIR = KLEIN_REQ_DIR
@@ -693,6 +707,12 @@ def _resolve_model_spec(name: String) raises -> ModelBackendSpec:
             String("serenitymojo/pipeline/anima_serenity_cli.mojo"),
             String("serenitymojo/configs/anima.json"),
         )
+    if name == String("LTX2"):
+        return ModelBackendSpec(
+            True, String("ltx2"), 2,
+            String("serenitymojo/sampling/ltx2_request_cli.mojo"),
+            String(""),
+        )
     if name == String("SD 1.5"):
         return ModelBackendSpec.unsupported(
             String("sd15"),
@@ -737,7 +757,7 @@ def _read_pidfile(path: String) -> Int:
 
 def cli_spawn_model(
     mut state: InferenceState, mut rt: GraphUiRuntime,
-    spec: ModelBackendSpec, display: QueueJob, size: Int,
+    spec: ModelBackendSpec, display: QueueJob, width: Int, height: Int,
 ) raises:
     """Spawn the PREBUILT model CLI detached (nohup + setsid + pidfile +
     output log) and arm the per-tick poll. The render thread returns
@@ -755,11 +775,18 @@ def cli_spawn_model(
     var out_png = String(MODEL_OUT_DIR) + String("/") + stem + String(".png")
     var log_path = String(MODEL_OUT_DIR) + String("/") + stem + String(".log")
     var pid_path = String(MODEL_OUT_DIR) + String("/") + stem + String(".pid")
-    var json = _sample_prompt_json(
-        display.prompt, state.negative, size, size,
-        display.steps, state.cfg, display.seed, caps_pos, caps_neg,
-        spec.needs_precache,
-    )
+    var status_path = String("")
+    var result_path = String("")
+    var output_dir = String("")
+    var json = state.cli_request_json.copy()
+    if spec.arg_style != 2:
+        json = _sample_prompt_json(
+            display.prompt, state.negative, width, height,
+            display.steps, state.cfg, display.seed, caps_pos, caps_neg,
+            spec.needs_precache,
+        )
+    elif json.byte_length() == 0:
+        raise Error("request-driven CLI is missing canonical genparams JSON")
     _write_text_file(req_json, json)
 
     # Per-model invocation contract.
@@ -767,6 +794,12 @@ def cli_spawn_model(
     if spec.arg_style == 1:
         # zimage_generate <lora|base> <out.png> <req.json> <id>
         invoke = spec.bin + String(" base ") + out_png + String(" ") + req_json + String(" serenityui")
+    elif spec.arg_style == 2:
+        output_dir = String(MODEL_OUT_DIR) + String("/") + stem
+        status_path = output_dir + String("/status.json")
+        result_path = output_dir + String("/result.json")
+        out_png = String("")
+        invoke = spec.bin + String(" ") + req_json + String(" ") + output_dir
     else:
         # sample_cli <config.json> <lora|-> <req.json> <id> <out.png>
         invoke = (
@@ -774,6 +807,8 @@ def cli_spawn_model(
             + req_json + String(" serenityui ") + out_png
         )
     var chain = String("")
+    if spec.arg_style == 2:
+        chain += String("mkdir -p ") + output_dir + String(" && ")
     if spec.needs_precache:
         chain += spec.precache_bin + String(" ") + req_json + String(" && ")
     chain += invoke
@@ -793,14 +828,22 @@ def cli_spawn_model(
     rt.cli_out_png = out_png.copy()
     rt.cli_log_path = log_path.copy()
     rt.cli_req_json = req_json.copy()
-    rt.cli_width = size
-    rt.cli_height = size
+    rt.cli_status_path = status_path.copy()
+    rt.cli_result_path = result_path.copy()
+    rt.cli_is_video = spec.arg_style == 2
+    rt.result_is_video = rt.cli_is_video
+    rt.cli_width = width
+    rt.cli_height = height
     rt.cli_tick_ct = 0
-    # F11: honest about what the CLI request JSON does NOT carry.
-    rt.cli_note = (
-        String("CLI: loras/variation/images ignored; size forced ")
-        + String(size)
-    )
+    # F11: request-driven adapters carry the canonical body verbatim. Legacy
+    # image adapters still report their reduced request surface honestly.
+    if spec.arg_style == 2:
+        rt.cli_note = String("exact canonical request; machine-readable progress")
+    else:
+        rt.cli_note = (
+            String("CLI: loras/variation/images ignored; size forced ")
+            + String(width) + String("x") + String(height)
+        )
     rt.route_label = String("cli")
     rt.last_command = cmd^
     rt.last_prompt_json = req_json.copy()
@@ -814,6 +857,40 @@ def cli_spawn_model(
 comptime CLI_POLL_FRAMES = 15   # ~4 Hz process/output poll
 
 
+def _apply_cli_status(mut state: InferenceState, mut rt: GraphUiRuntime):
+    """Apply the request runner's latest atomic status snapshot.
+
+    A malformed/in-flight read is ignored and retried on the next poll; the
+    UI never guesses a phase or scrapes human logs.
+    """
+    if rt.cli_status_path.byte_length() == 0 or not _path_exists(rt.cli_status_path):
+        return
+    try:
+        var doc = loads(_read_text_file(rt.cli_status_path))
+        if not doc.is_object():
+            return
+        var phase = _opt_str(doc, String("phase"))
+        if phase.byte_length() == 0:
+            phase = String("running")
+        var message = _opt_str(doc, String("message"))
+        if message.byte_length() == 0:
+            message = phase.copy()
+        var status_state = _opt_str(doc, String("state"))
+        if status_state.byte_length() == 0:
+            status_state = String("running")
+        if doc.contains(String("step")) and doc[String("step")].is_int():
+            state.current_step = Int32(doc[String("step")].as_int())
+        if doc.contains(String("total")) and doc[String("total")].is_int():
+            var total = doc[String("total")].as_int()
+            if total > 0:
+                state.total_steps = Int32(total)
+        rt.last_status = rt.cli_slug + String(" · ") + message
+        if status_state == String("failed"):
+            rt.last_error = message.copy()
+    except:
+        pass
+
+
 def cli_tick(mut state: InferenceState, mut rt: GraphUiRuntime):
     """Per-frame nonblocking poll of the detached CLI job (F4)."""
     if not rt.cli_active:
@@ -822,14 +899,49 @@ def cli_tick(mut state: InferenceState, mut rt: GraphUiRuntime):
     if rt.cli_tick_ct < CLI_POLL_FRAMES:
         return
     rt.cli_tick_ct = 0
+    _apply_cli_status(state, rt)
     if _sys_pid_alive(rt.cli_pid):
-        return  # still working; log/PNG polled again next interval
+        return  # still working; status/artifact polled again next interval
     rt.cli_active = False
     if rt.cli_cancelled:
         rt.last_status = String("CLI cancelled")
         state.has_running = False
         state.generating = False
         state.perf.gpu_util_pct = 0.0
+        return
+    if rt.cli_is_video:
+        if _path_exists(rt.cli_result_path):
+            try:
+                var doc = loads(_read_text_file(rt.cli_result_path))
+                if not doc.is_object():
+                    raise Error("LTX2 result manifest is not an object")
+                var artifact = _opt_str(doc, String("artifact_path"))
+                if artifact.byte_length() == 0 or not _path_exists(artifact):
+                    raise Error("LTX2 result manifest has no existing artifact")
+                var width = rt.cli_width
+                var height = rt.cli_height
+                if doc.contains(String("width")) and doc[String("width")].is_int():
+                    width = doc[String("width")].as_int()
+                if doc.contains(String("height")) and doc[String("height")].is_int():
+                    height = doc[String("height")].as_int()
+                var run = GraphBackendRun(
+                    True, artifact, rt.cli_req_json, rt.cli_log_path,
+                    rt.last_command, width, height, String(""),
+                )
+                _finish_success(state, rt, run^)
+                rt.result_is_video = True
+                rt.last_status = String("ltx2 · video ready · ") + artifact
+                return
+            except e:
+                _finish_failed(state, rt, String(e))
+                return
+        var msg = rt.last_error.copy()
+        if msg.byte_length() == 0:
+            msg = (
+                String("CLI ltx2 exited without writing ")
+                + rt.cli_result_path + String("; see ") + rt.cli_log_path
+            )
+        _finish_failed(state, rt, msg)
         return
     if _path_exists(rt.cli_out_png):
         var run = GraphBackendRun(
@@ -973,6 +1085,20 @@ def graph_submit_current(mut state: InferenceState, mut rt: GraphUiRuntime):
         )
         return
 
+    if spec.arg_style == 2:
+        # Request-driven video backends execute the canonical body directly.
+        # Do not pass them through the legacy square-image graph or rebuild
+        # their request from the reduced InferenceState snapshot.
+        try:
+            _start_display_job(state, display)
+            cli_spawn_model(
+                state, rt, spec, display,
+                Int(state.width), Int(state.height),
+            )
+        except e:
+            _finish_failed(state, rt, String(e))
+        return
+
     var size = _square_klein_size(display.width, display.height)
     var out_png = (
         String(MODEL_OUT_DIR) + String("/serenityui_") + spec.slug
@@ -993,7 +1119,7 @@ def graph_submit_current(mut state: InferenceState, mut rt: GraphUiRuntime):
             )
             return
         _start_display_job(state, display)
-        cli_spawn_model(state, rt, spec, display, size)
+        cli_spawn_model(state, rt, spec, display, size, size)
     except e:
         _finish_failed(state, rt, String(e))
 
@@ -1405,6 +1531,9 @@ def graph_progress_fraction(state: InferenceState) -> Float32:
 
 
 def graph_backend_label(rt: GraphUiRuntime) -> String:
+    var backend = String("Klein 9B")
+    if rt.cli_slug.byte_length() > 0:
+        backend = rt.cli_slug.copy()
     if rt.last_error.byte_length() > 0:
-        return String("graph executor  ·  Klein 9B  ·  ") + rt.last_status + String("  ·  ") + rt.last_error
-    return String("graph executor  ·  Klein 9B  ·  ") + rt.last_status
+        return String("graph executor  ·  ") + backend + String("  ·  ") + rt.last_status + String("  ·  ") + rt.last_error
+    return String("graph executor  ·  ") + backend + String("  ·  ") + rt.last_status

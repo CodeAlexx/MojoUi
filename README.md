@@ -66,12 +66,26 @@ Other pixi tasks:
 
 ```bash
 pixi run test           # full regression — 22 PASS lines across core+widgets
+pixi run test-genparams # canonical image/video request round-trip, including
+                        # frames/FPS/audio/conditioning and stacked LoRAs
 pixi run test-types     # core/types.mojo smoke tests (Vec2/Rect/Color)
 pixi run test-ffi       # render/ffi.mojo smoke (FFI imports + key constants)
 pixi run test-backend   # render/backend.mojo smoke (color packing + tessellation + API surface)
 ```
 
 The build assumes Linux with OpenGL 3.3 (`-DSOKOL_GLCORE`). Other backends (Metal, D3D11, Vulkan, WebGPU) compile by changing the SOKOL define in `c_floor/Makefile` — not yet validated.
+
+## Canonical generation requests
+
+`mojoui.app.genparams.GenParams` is the UI/backend request boundary. Its
+`serenity.genparams.v1` JSON carries still-image and video fields in one
+round-trippable object, including frame count, FPS, generated-audio choice,
+positive/negative conditioning artifact paths, and an arbitrary ordered LoRA
+stack. Request-driven backends receive this JSON verbatim; the legacy
+`InferenceState` projection is display compatibility and must not be used to
+reconstruct or reduce the product request. Detached runners may publish atomic
+machine-readable status and result manifests, which the inference bridge polls
+without scraping human logs.
 
 ## App model — one handler, text **or** GUI
 
