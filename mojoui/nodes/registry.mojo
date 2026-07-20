@@ -1184,6 +1184,18 @@ def register_comfy_compat_extension_nodes(mut registry: NodeRegistry):
     lora_model.with_size(Vec2(320.0, 135.0))
     registry.register(lora_model^)
 
+    var ltxv_lora = NodeTypeDef(
+        String("comfy/LTXVLoraLoader"),
+        String("LTX2 LoRA Loader"),
+        String("comfy/loaders/video"),
+    )
+    ltxv_lora.with_input(String("ltxv_model"), NVT_MODEL)
+    ltxv_lora.with_output(String("LTXV_MODEL"), NVT_MODEL)
+    ltxv_lora.with_field(String("lora_name"), FieldValue.string(String("")))
+    ltxv_lora.with_field(String("strength_model"), FieldValue.number(1.0))
+    ltxv_lora.with_size(Vec2(320.0, 135.0))
+    registry.register(ltxv_lora^)
+
     var tiled_decode = NodeTypeDef(
         String("comfy/VAEDecodeTiled"),
         String("VAE Decode Tiled"),

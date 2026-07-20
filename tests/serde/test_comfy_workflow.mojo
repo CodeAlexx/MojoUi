@@ -154,6 +154,33 @@ def test_parse_comfy_api_prompt() raises:
     print("PASS: test_parse_comfy_api_prompt")
 
 
+def test_parse_ltxv_lora_api_prompt() raises:
+    var raw = String(
+        "{"
+        + "\"1\":{\"class_type\":\"LTXVLoader\",\"inputs\":{\"checkpoint_path\":\"model.safetensors\",\"gemma_path\":\"gemma\"}},"
+        + "\"10\":{\"class_type\":\"LTXVLoraLoader\",\"inputs\":{\"ltxv_model\":[\"1\",0],\"lora_name\":\"\",\"strength_model\":1.0}},"
+        + "\"2\":{\"class_type\":\"LTXVSampler\",\"inputs\":{\"ltxv_model\":[\"10\",0],\"prompt\":\"test\"}}"
+        + "}"
+    )
+    var imported = parse_comfy_workflow(raw)
+    if imported.graph.node_count() != 3:
+        _fail("ltxv api: expected 3 nodes")
+    if imported.graph.edge_count() != 2:
+        _fail("ltxv api: expected loader -> lora -> sampler edges")
+    if len(imported.graph.nodes[0].outputs) != 1 \
+        or imported.graph.nodes[0].outputs[0].name != String("LTXV_MODEL") \
+        or imported.graph.nodes[0].outputs[0].value_type != NVT_MODEL:
+        _fail("ltxv api: loader should expose one LTXV model output")
+    if len(imported.graph.nodes[1].outputs) != 1 \
+        or imported.graph.nodes[1].outputs[0].name != String("LTXV_MODEL") \
+        or imported.graph.nodes[1].outputs[0].value_type != NVT_MODEL:
+        _fail("ltxv api: LoRA loader should expose one LTXV model output")
+    if len(imported.graph.nodes[2].outputs) != 3 \
+        or imported.graph.nodes[2].outputs[1].value_type != NVT_VIDEO:
+        _fail("ltxv api: sampler should expose frames, video, and audio")
+    print("PASS: test_parse_ltxv_lora_api_prompt")
+
+
 def test_parse_popular_extension_api_prompt() raises:
     var raw = String(
         "{"
@@ -292,6 +319,7 @@ def main() raises:
     test_parse_visual_workflow_nodes_links_groups()
     test_parse_swarm_workflow_wrapper()
     test_parse_comfy_api_prompt()
+    test_parse_ltxv_lora_api_prompt()
     test_parse_popular_extension_api_prompt()
     test_parse_lanpaint_visual_workflow()
     test_parse_lanpaint_api_prompt()

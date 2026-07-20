@@ -449,6 +449,14 @@ def _add_api_outputs(mut node: Node, class_type: String):
         node.add_output(PortRef(String("count"), NVT_NUMBER))
     elif _contains_ci(class_type, String("vhs_unbatch")):
         node.add_output(PortRef(String("unbatched"), NVT_TEXT))
+    elif _contains_ci(class_type, String("ltxvsampler")):
+        node.add_output(PortRef(String("frames"), NVT_IMAGE))
+        node.add_output(PortRef(String("video"), NVT_VIDEO))
+        node.add_output(PortRef(String("audio"), NVT_TEXT))
+    elif _contains_ci(class_type, String("ltxvloraloader")):
+        node.add_output(PortRef(String("LTXV_MODEL"), NVT_MODEL))
+    elif _contains_ci(class_type, String("ltxvloader")):
+        node.add_output(PortRef(String("LTXV_MODEL"), NVT_MODEL))
     elif _contains_ci(class_type, String("checkpointloader")):
         node.add_output(PortRef(String("MODEL"), NVT_MODEL))
         node.add_output(PortRef(String("CLIP"), NVT_CLIP))
